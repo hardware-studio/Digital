@@ -6,10 +6,12 @@
 package de.neemann.digital.gui.components;
 
 import de.neemann.digital.core.*;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.lang.Lang;
 import de.neemann.gui.Screen;
 
 import javax.swing.*;
+import javax.swing.border.Border;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -18,7 +20,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.util.Arrays;
+import java.util.ArrayList;
 
 /**
  * Dialog to edit a single value.
@@ -26,107 +28,106 @@ import java.util.Arrays;
  */
 public final class SingleValueDialog extends JDialog implements ModelStateObserverTyped {
 
-    private final ObservableValue value;
-    private final CircuitComponent circuitComponent;
-    private final SyncAccess model;
+    private static final Format[] FORMATS;
+    private static final Border SEPARATOR = BorderFactory.createEmptyBorder(0, 0, 0, 5);
 
-    private enum InMode {
-        HEX(Lang.get("attr_dialogHex")),
-        DECIMAL(Lang.get("attr_dialogDecimal")),
-        OCTAL(Lang.get("attr_dialogOctal")),
-        ASCII(Lang.get("attr_dialogAscii")),
-        // highZ needs to be the last entry!! See InMode#values(boolean)
-        HIGHZ(Lang.get("attr_dialogHighz"));
+    static {
+        ArrayList<Format> f = new ArrayList<>();
+        for (IntFormat intf : IntFormat.values()) {
+            if (!intf.dependsOnAttributes())
+                f.add(new Format(intf));
+        }
+        FORMATS = f.toArray(new Format[]{});
+    }
 
-        private String langText;
+    private static final class Format {
+        private final IntFormat intFormat;
+        private final String name;
 
-        InMode(String langKey) {
-            this.langText = langKey;
+        private Format(IntFormat intFormat) {
+            this.intFormat = intFormat;
+            name = Lang.get("key_intFormat_" + intFormat.name());
         }
 
         @Override
         public String toString() {
-            return langText;
-        }
-
-        public static InMode[] values(boolean supportsHighZ) {
-            if (supportsHighZ) {
-                return values();
-            } else {
-                return Arrays.copyOf(values(), values().length - 1);
-            }
+            return name;
         }
     }
 
+    private static Format findFormat(ValueFormatter f) {
+        for (Format ff : FORMATS)
+            if (ff.intFormat.createFormatter(null) == f)
+                return ff;
+        return null;
+    }
+
+    private final ObservableValue value;
+    private final SyncAccess syncAccess;
+
     private final JTextField textField;
+    private boolean textIsModifying;
     private final boolean supportsHighZ;
-    private final JComboBox<InMode> formatComboBox;
+    private final JComboBox<Format> formatComboBox;
     private final long mask;
     private JCheckBox[] checkBoxes;
-    private boolean programmaticModifyingFormat = false;
-    private long editValue;
+    private Value editValue;
+    private ValueFormatter valueFormatter = IntFormat.DEFAULT_FORMATTER;
 
     /**
      * Edits a single value
      *
-     * @param parent           the parent frame
-     * @param pos              the position to pop up the dialog
-     * @param label            the name of the value
-     * @param value            the value to edit
-     * @param supportsHighZ    true is high z is supported
-     * @param circuitComponent the component which contains the circuit
-     * @param model            the model
+     * @param parent        the parent frame
+     * @param pos           the position to pop up the dialog
+     * @param label         the name of the value
+     * @param value         the value to edit
+     * @param supportsHighZ true is high z is supported
+     * @param model         the model
      */
-    //CHECKSTYLE.OFF: ParameterNumberCheck
-    public SingleValueDialog(JFrame parent, Point pos, String label, ObservableValue value, boolean supportsHighZ, CircuitComponent circuitComponent, Model model) {
+    public SingleValueDialog(JFrame parent, Point pos, String label, ObservableValue value, boolean supportsHighZ, Model model) {
         super(parent, Lang.get("win_valueInputTitle_N", label), false);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         this.value = value;
-        this.circuitComponent = circuitComponent;
-        this.model = model;
+        this.syncAccess = model;
 
-        editValue = value.getValue();
+        editValue = value.getCopy();
         this.supportsHighZ = supportsHighZ;
         mask = Bits.mask(value.getBits());
 
         textField = new JTextField(10);
         textField.setHorizontalAlignment(JTextField.RIGHT);
 
-        formatComboBox = new JComboBox<>(InMode.values(supportsHighZ));
+        formatComboBox = new JComboBox<>(FORMATS);
         formatComboBox.addActionListener(actionEvent -> {
-            if (!programmaticModifyingFormat)
-                setLongToDialog(editValue);
+            Format selectedItem = (Format) formatComboBox.getSelectedItem();
+            if (selectedItem != null) {
+                valueFormatter = selectedItem.intFormat.createFormatter(null);
+                updateSeparators();
+            }
+            setLongToDialog(editValue);
         });
 
-        model.access(() -> model.addObserver(this));
+        JPanel checkBoxPanel = createCheckBoxPanel(editValue);
+
+        model.modify(() -> model.addObserver(this));
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent windowEvent) {
-                model.access(() -> model.removeObserver(SingleValueDialog.this));
+                model.modify(() -> model.removeObserver(SingleValueDialog.this));
             }
         });
 
         JPanel panel = new JPanel(new GridBagLayout());
-        ConstraintsBuilder constr = new ConstraintsBuilder().inset(3).fill();
-        panel.add(formatComboBox, constr);
         JSpinner spinner = new JSpinner(new MySpinnerModel()) {
             @Override
             protected JComponent createEditor(SpinnerModel spinnerModel) {
                 return textField;
             }
         };
-        panel.add(spinner, constr.dynamicWidth().x(1));
-        constr.nextRow();
-        panel.add(new JLabel(Lang.get("attr_dialogBinary")), constr);
-        panel.add(createCheckBoxPanel(value.getBits(), editValue), constr.dynamicWidth().x(1));
-        getContentPane().add(panel);
 
         textField.getDocument().addDocumentListener(new MyDocumentListener(() -> setStringToDialog(textField.getText())));
 
-        if (value.isHighZ())
-            formatComboBox.setSelectedItem(InMode.HIGHZ);
-        else
-            setLongToDialog(editValue);
+        setLongToDialog(editValue);
 
         JButton okButton = new JButton(new AbstractAction(Lang.get("ok")) {
             @Override
@@ -142,53 +143,68 @@ public final class SingleValueDialog extends JDialog implements ModelStateObserv
             }
         };
         JButton applyButton = new JButton(applyAction);
+
+        ConstraintsBuilder constr = new ConstraintsBuilder().inset(3).dynamicWidth().fill();
+        panel.add(new JLabel(Lang.get("win_valueInputTitle_N", label)), constr);
+        panel.add(spinner, constr.x(1));
+        panel.add(applyButton, constr.x(2));
+
+        constr.nextRow();
+        panel.add(new JLabel(Lang.get("key_intFormat")), constr);
+        panel.add(formatComboBox, constr.x(1));
+        panel.add(okButton, constr.x(2));
+
+        constr.nextRow();
+        panel.add(new JLabel(Lang.get("key_intFormat_bin")), constr);
+        panel.add(checkBoxPanel, constr.x(1));
+
+        getContentPane().add(panel);
+
         textField.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.SHIFT_DOWN_MASK, true), applyAction);
         textField.getActionMap().put(applyAction, applyAction);
-
-        JPanel buttonPanel = new JPanel(new GridLayout(2, 1));
-        buttonPanel.add(okButton);
-        buttonPanel.add(applyButton);
-        getContentPane().add(buttonPanel, BorderLayout.EAST);
 
         getRootPane().setDefaultButton(okButton);
         getRootPane().registerKeyboardAction(actionEvent -> dispose(),
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
 
-        pack();
+        updateSeparators();
         Screen.setLocation(this, pos, true);
         textField.requestFocus();
         textField.select(0, Integer.MAX_VALUE);
     }
-    //CHECKSTYLE.ON: ParameterNumberCheck
+
+    @Override
+    public void requestFocus() {
+        super.requestFocus();
+        textField.requestFocus();
+        textField.select(0, Integer.MAX_VALUE);
+    }
 
     private void apply() {
-        if (getSelectedFormat().equals(InMode.HIGHZ)) {
-            model.access(value::setToHighZ);
-        } else {
-            model.access(() -> value.setValue(editValue));
-        }
-        circuitComponent.modelHasChanged();
+        syncAccess.modify(() -> editValue.applyTo(value));
     }
 
     @Override
     public void handleEvent(ModelEvent event) {
-        if (event.equals(ModelEvent.STOPPED))
+        if (event.equals(ModelEvent.CLOSED))
             dispose();
     }
 
     @Override
-    public ModelEvent[] getEvents() {
-        return new ModelEvent[]{ModelEvent.STOPPED};
+    public ModelEventType[] getEvents() {
+        return new ModelEventType[]{ModelEventType.CLOSED};
     }
 
-    private JPanel createCheckBoxPanel(int bits, long value) {
+    private JPanel createCheckBoxPanel(Value value) {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS));
+        int bits = value.getBits();
+        long l = value.getValue();
         checkBoxes = new JCheckBox[bits];
         for (int i = bits - 1; i >= 0; i--) {
             final int bit = i;
-            checkBoxes[bit] = new JCheckBox("", (value & (1L << bit)) != 0);
+            checkBoxes[bit] = new JCheckBox("", (l & (1L << bit)) != 0);
             checkBoxes[bit].setBorder(null);
             checkBoxes[bit].addActionListener(actionEvent -> setBit(bit, checkBoxes[bit].isSelected()));
             p.add(checkBoxes[bit]);
@@ -198,84 +214,64 @@ public final class SingleValueDialog extends JDialog implements ModelStateObserv
 
     private void setBit(int bitNum, boolean set) {
         if (set)
-            editValue |= 1L << bitNum;
+            editValue = new Value(editValue.getValue() | 1L << bitNum, editValue.getBits());
         else
-            editValue &= ~(1L << bitNum);
-
-        if (getSelectedFormat().equals(InMode.HIGHZ))
-            setSelectedFormat(InMode.HEX);
+            editValue = new Value(editValue.getValue() & ~(1L << bitNum), editValue.getBits());
 
         setLongToDialog(editValue);
     }
 
-    private void setLongToDialog(long editValue) {
-        switch (getSelectedFormat()) {
-            case ASCII:
-                char val = (char) (editValue);
-                textField.setText("\'" + val + "\'");
-                textField.setCaretPosition(1);
-                break;
-            case DECIMAL:
-                textField.setText(Long.toString(editValue));
-                break;
-            case HEX:
-                textField.setText("0x" + Long.toHexString(editValue));
-                break;
-            case OCTAL:
-                textField.setText("0" + Long.toOctalString(editValue));
-                break;
-            case HIGHZ:
-                textField.setText("?");
-                break;
-            default:
+    private void setLongToDialog(Value editValue) {
+        if (!textIsModifying) {
+            textField.setText(valueFormatter.formatToEdit(editValue));
+            textField.requestFocus();
         }
-        textField.requestFocus();
     }
 
-    private InMode getSelectedFormat() {
-        return (InMode) formatComboBox.getSelectedItem();
+    /**
+     * Sets the selected format
+     *
+     * @param format the format
+     * @return this for chained calls
+     */
+    public SingleValueDialog setSelectedFormat(ValueFormatter format) {
+        valueFormatter = format;
+        formatComboBox.setSelectedItem(findFormat(valueFormatter));
+        setLongToDialog(editValue);
+        updateSeparators();
+        requestFocus();
+        return this;
     }
 
-    private void setSelectedFormat(InMode format) {
-        if (!getSelectedFormat().equals(format)) {
-            programmaticModifyingFormat = true;
-            formatComboBox.setSelectedItem(format);
-            programmaticModifyingFormat = false;
+    private void updateSeparators() {
+        int bits = editValue.getBits();
+        for (int i = 1; i < checkBoxes.length; i++) {
+            if (valueFormatter.isSeparatorInFrontOf(bits, i))
+                checkBoxes[i].setBorder(SEPARATOR);
+            else
+                checkBoxes[i].setBorder(null);
         }
+        pack();
     }
 
     private void setStringToDialog(String text) {
         text = text.trim();
-        if (text.length() > 0) {
-            if (text.contains("?") && supportsHighZ) {
-                setSelectedFormat(InMode.HIGHZ);
-                editValue = 0;
-            } else if (text.charAt(0) == '\'') {
-                setSelectedFormat(InMode.ASCII);
-                if (text.length() > 1) {
-                    editValue = text.charAt(1);
-                } else {
-                    editValue = 0;
-                }
-            } else {
-                if (text.startsWith("0x"))
-                    setSelectedFormat(InMode.HEX);
-                else if (text.startsWith("0") && text.length() > 1)
-                    setSelectedFormat(InMode.OCTAL);
-                else
-                    setSelectedFormat(InMode.DECIMAL);
-                try {
-                    editValue = Bits.decode(text);
-                } catch (Bits.NumberFormatException e) {
-                    // do nothing on error
-                }
+        if (text.equalsIgnoreCase("z") && supportsHighZ)
+            editValue = new Value(editValue.getBits());
+        else {
+            try {
+                editValue = new Value(Bits.decode(text), editValue.getBits());
+            } catch (Bits.NumberFormatException e) {
+                // do nothing on error
             }
-            for (int i = 0; i < checkBoxes.length; i++)
-                checkBoxes[i].setSelected((editValue & (1L << i)) != 0);
+        }
+        long value = editValue.getValue();
+        for (int i = 0; i < checkBoxes.length; i++) {
+            checkBoxes[i].setSelected((value & (1L << i)) != 0);
         }
     }
 
-    private static final class MyDocumentListener implements DocumentListener {
+    private final class MyDocumentListener implements DocumentListener {
         private final Runnable runnable;
 
         private MyDocumentListener(Runnable runnable) {
@@ -284,17 +280,23 @@ public final class SingleValueDialog extends JDialog implements ModelStateObserv
 
         @Override
         public void insertUpdate(DocumentEvent documentEvent) {
-            runnable.run();
+            run();
         }
 
         @Override
         public void removeUpdate(DocumentEvent documentEvent) {
-            runnable.run();
+            run();
         }
 
         @Override
         public void changedUpdate(DocumentEvent documentEvent) {
+            run();
+        }
+
+        private void run() {
+            textIsModifying = true;
             runnable.run();
+            textIsModifying = false;
         }
     }
 
@@ -306,8 +308,8 @@ public final class SingleValueDialog extends JDialog implements ModelStateObserv
 
         @Override
         public void setValue(Object o) {
-            if (o != null && o instanceof Number) {
-                editValue = ((Number) o).longValue();
+            if (o instanceof Number) {
+                editValue = new Value(((Number) o).longValue(), editValue.getBits());
                 setLongToDialog(editValue);
                 apply();
             }
@@ -315,12 +317,12 @@ public final class SingleValueDialog extends JDialog implements ModelStateObserv
 
         @Override
         public Object getNextValue() {
-            return (editValue + 1) & mask;
+            return (editValue.getValue() + 1) & mask;
         }
 
         @Override
         public Object getPreviousValue() {
-            return (editValue - 1) & mask;
+            return (editValue.getValue() - 1) & mask;
         }
 
         @Override

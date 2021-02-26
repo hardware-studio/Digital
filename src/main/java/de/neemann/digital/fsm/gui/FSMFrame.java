@@ -6,13 +6,14 @@
 package de.neemann.digital.fsm.gui;
 
 import de.neemann.digital.FileLocator;
+import de.neemann.digital.analyse.expression.ExpressionException;
+import de.neemann.digital.analyse.expression.format.FormatterException;
 import de.neemann.digital.core.*;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.draw.graphics.*;
 import de.neemann.digital.draw.library.ElementLibrary;
 import de.neemann.digital.draw.shapes.ShapeFactory;
-import de.neemann.digital.fsm.FSM;
-import de.neemann.digital.fsm.FSMDemos;
+import de.neemann.digital.fsm.*;
 import de.neemann.digital.gui.*;
 import de.neemann.digital.gui.components.table.ShowStringDialog;
 import de.neemann.digital.gui.components.table.TableDialog;
@@ -57,7 +58,7 @@ public class FSMFrame extends JFrame implements ClosingWindowListener.ConfirmSav
     private File baseFilename;
     private boolean lastModified;
     private String probeLabelName;
-    private GlobalValues.GlobalValueListener stateListener = new StateListener();
+    private final GlobalValues.GlobalValueListener stateListener = new StateListener();
 
     /**
      * Opens the given file in a new frame
@@ -156,6 +157,7 @@ public class FSMFrame extends JFrame implements ClosingWindowListener.ConfirmSav
 
         setJMenuBar(bar);
 
+        pack();
         new WindowSizeStorage("fsm").setDefaultSize(600, 600).restore(this);
 
         setFSM(new FSM());
@@ -403,6 +405,20 @@ public class FSMFrame extends JFrame implements ClosingWindowListener.ConfirmSav
                 }
             });
         }
+
+        if (Main.isExperimentalMode())
+            create.add(new ToolTipAction(Lang.get("menu_fsm_optimize_state_numbers")) {
+                @Override
+                public void actionPerformed(ActionEvent actionEvent) {
+                    try {
+                        new OptimizerDialog(FSMFrame.this).setVisible(true);
+                    } catch (FiniteStateMachineException | FormatterException | ExpressionException e) {
+                        new ErrorMessage(Lang.get("menu_fsm_optimize_state_numbers_err")).addCause(e).show(FSMFrame.this);
+                    } finally {
+                        fsmComponent.repaint();
+                    }
+                }
+            }.setToolTip(Lang.get("menu_fsm_optimize_state_numbers_tt")).createJMenuItem());
     }
 
     /**
@@ -458,9 +474,9 @@ public class FSMFrame extends JFrame implements ClosingWindowListener.ConfirmSav
                 value.addObserverToValue(() -> setActiveState(value.getValue()));
                 setActiveState(value.getValue());
                 model.addObserver(event -> {
-                            if (event == ModelEvent.STOPPED)
+                            if (event == ModelEvent.CLOSED)
                                 setActiveState(-1);
-                        }, ModelEvent.STOPPED
+                        }, ModelEventType.CLOSED
                 );
             }
         }
@@ -536,7 +552,11 @@ public class FSMFrame extends JFrame implements ClosingWindowListener.ConfirmSav
         ElementLibrary library = new ElementLibrary();
         new ShapeFactory(library);
 
-        new FSMFrame(null, library, null).setVisible(true);
+        File f = null;
+        if (args.length == 1)
+            f = new File(args[0]);
+
+        new FSMFrame(null, library, f).setVisible(true);
     }
 
 }

@@ -17,7 +17,7 @@ import static de.neemann.digital.core.element.PinInfo.input;
 /**
  * A simple register.
  */
-public class Register extends Node implements Element, Countable {
+public class Register extends Node implements Element, Countable, ProgramCounter {
 
     /**
      * The registers {@link ElementTypeDescription}
@@ -29,18 +29,20 @@ public class Register extends Node implements Element, Countable {
             .addAttribute(Keys.LABEL)
             .addAttribute(Keys.INVERTER_CONFIG)
             .addAttribute(Keys.IS_PROGRAM_COUNTER)
-            .addAttribute(Keys.VALUE_IS_PROBE);
+            .addAttribute(Keys.VALUE_IS_PROBE)
+            .supportsHDL();
 
     private final int bits;
     private final boolean isProbe;
     private final String label;
     private final boolean isProgramCounter;
+    private final ObservableValue q;
     private ObservableValue dVal;
     private ObservableValue clockVal;
     private ObservableValue enableVal;
-    private ObservableValue q;
     private boolean lastClock;
     private long value;
+    private boolean enable;
 
     /**
      * Creates a new instance
@@ -58,7 +60,7 @@ public class Register extends Node implements Element, Countable {
 
     @Override
     public void readInputs() throws NodeException {
-        boolean enable = enableVal.getBool();
+        enable = enableVal.getBool();
         boolean clock = clockVal.getBool();
         if (clock && !lastClock && enable)
             value = dVal.getValue();
@@ -86,23 +88,16 @@ public class Register extends Node implements Element, Countable {
     public void registerNodes(Model model) {
         super.registerNodes(model);
         if (isProbe)
-            model.addSignal(new Signal(label, q, (v, z) -> {
-                value = v;
-                q.setValue(value);
-            }));
+            model.addSignal(new Signal(label, q, (value, highZ) -> setValue(value)).setTestOutput());
     }
 
-    /**
-     * @return true if this register is the program counter
-     */
+    @Override
     public boolean isProgramCounter() {
         return isProgramCounter;
     }
 
-    /**
-     * @return the value of this register
-     */
-    public long getValue() {
+    @Override
+    public long getProgramCounter() {
         return value;
     }
 
@@ -111,4 +106,44 @@ public class Register extends Node implements Element, Countable {
         return bits;
     }
 
+    /**
+     * Returns the stored value.
+     * Used to improve custom testing capabilities.
+     *
+     * @return the stared value
+     */
+    public long getValue() {
+        return value;
+    }
+
+    /**
+     * Sets the stored value.
+     * Used to improve custom testing capabilities.
+     *
+     * @param v the value
+     */
+    public void setValue(long v) {
+        value = v;
+        q.setValue(value);
+    }
+
+    /**
+     * Returns the used label.
+     * Used to improve custom testing capabilities.
+     *
+     * @return the label
+     */
+    public String getLabel() {
+        return label;
+    }
+
+    /**
+     * Returns the enable input value.
+     * Used to improve custom testing capabilities.
+     *
+     * @return true if enable was set at the last clock change.
+     */
+    public boolean isEnabled() {
+        return enable;
+    }
 }

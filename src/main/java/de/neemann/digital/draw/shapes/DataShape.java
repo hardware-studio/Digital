@@ -6,7 +6,6 @@
 package de.neemann.digital.draw.shapes;
 
 import de.neemann.digital.core.Model;
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.Signal;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
@@ -54,7 +53,7 @@ public class DataShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         return null;
     }
 
@@ -78,6 +77,7 @@ public class DataShape implements Shape {
     @Override
     public void registerModel(ModelCreator modelCreator, Model model, ModelEntry element) {
         ArrayList<Signal> signals = model.getSignalsCopy();
+        signals.removeIf(signal -> !signal.isShowInGraph());
         new OrderMerger<String, Signal>(modelCreator.getCircuit().getMeasurementOrdering()) {
             @Override
             public boolean equals(Signal a, String b) {
@@ -85,7 +85,11 @@ public class DataShape implements Shape {
             }
         }.order(signals);
 
-        ValueTableObserver valueTableObserver = new ValueTableObserver(microStep, signals, maxSize);
+        boolean ms = microStep;
+        if (model.getAsyncInfos() != null)
+            ms = true;
+
+        ValueTableObserver valueTableObserver = new ValueTableObserver(ms, signals, maxSize);
         logDataModel = valueTableObserver.getLogData();
         model.addObserver(valueTableObserver);
     }

@@ -13,6 +13,7 @@ import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.extern.External;
 import de.neemann.digital.core.io.In;
 import de.neemann.digital.core.io.Out;
+import de.neemann.digital.core.io.Probe;
 import de.neemann.digital.core.memory.ROM;
 import de.neemann.digital.core.wiring.Driver;
 import de.neemann.digital.draw.elements.Circuit;
@@ -27,6 +28,7 @@ import de.neemann.digital.fsm.FSM;
 import de.neemann.digital.fsm.State;
 import de.neemann.digital.fsm.Transition;
 import de.neemann.digital.fsm.gui.FSMFrame;
+import de.neemann.digital.gui.DigitalRemoteInterface;
 import de.neemann.digital.gui.Main;
 import de.neemann.digital.gui.NumberingWizard;
 import de.neemann.digital.gui.Settings;
@@ -39,12 +41,13 @@ import de.neemann.digital.gui.components.table.ExpressionListenerStore;
 import de.neemann.digital.gui.components.table.TableDialog;
 import de.neemann.digital.gui.components.terminal.KeyboardDialog;
 import de.neemann.digital.gui.components.terminal.Terminal;
-import de.neemann.digital.gui.components.terminal.TerminalDialog;
 import de.neemann.digital.gui.components.testing.TestAllDialog;
 import de.neemann.digital.gui.components.testing.ValueTableDialog;
+import de.neemann.digital.gui.remote.RemoteException;
 import de.neemann.digital.lang.Lang;
 import de.neemann.digital.testing.TestCaseDescription;
 import de.neemann.digital.testing.TestCaseElement;
+import de.neemann.digital.testing.parser.ParserException;
 import de.neemann.gui.ErrorMessage;
 import junit.framework.TestCase;
 
@@ -60,7 +63,7 @@ import java.util.List;
 import static de.neemann.digital.draw.shapes.GenericShape.SIZE;
 import static de.neemann.digital.draw.shapes.GenericShape.SIZE2;
 import static de.neemann.digital.integration.GuiTester.getBaseContainer;
-import static de.neemann.digital.testing.TestCaseElement.TESTDATA;
+import static de.neemann.digital.core.element.Keys.TESTDATA;
 
 /**
  * These tests are excluded from the maven build because gui tests are sometimes fragile.
@@ -167,16 +170,40 @@ public class TestInGUI extends TestCase {
         new GuiTester()
                 .delay(500)
                 .press("F5")
-                .mouseMove(100, 100)
+                .mouseMove(100, 110)
                 .delay(300)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(200)
                 .mouseMove(400, 200)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .add(new GuiTester.WindowCheck<>(Main.class, (gt, main) -> {
                     Circuit c = main.getCircuitComponent().getCircuit();
                     assertEquals(1, c.getElements().size());
+                }))
+                .execute();
+    }
+
+    public void testTreeViewSearch() {
+        new GuiTester()
+                .delay(500)
+                .press("F5")
+                .mouseMove(100, 65)
+                .delay(300)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
+                .delay(200)
+                .type("probe")
+                .delay(200)
+                .mouseMove(100, 110)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
+                .delay(200)
+                .mouseMove(400, 200)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
+                .delay(500)
+                .add(new GuiTester.WindowCheck<>(Main.class, (gt, main) -> {
+                    Circuit c = main.getCircuitComponent().getCircuit();
+                    assertEquals(1, c.getElements().size());
+                    assertTrue(c.getElements().get(0).equalsDescription(Probe.DESCRIPTION));
                 }))
                 .execute();
     }
@@ -211,7 +238,8 @@ public class TestInGUI extends TestCase {
                 .press("ENTER")
                 .press("control typed a")
                 .type("a b + b c")
-                .press("TAB", 2)
+                .press("F1", 1)
+                .press("TAB", 1)
                 .press("SPACE")
                 .delay(500)
                 .add(new GuiTester.WindowCheck<>(Main.class,
@@ -224,7 +252,7 @@ public class TestInGUI extends TestCase {
                 .execute();
     }
 
-    private GuiTester createNew4VarTruthTable = new GuiTester()
+    private final GuiTester createNew4VarTruthTable = new GuiTester()
             .press("F10")
             .press("RIGHT", 4)
             .press("DOWN", 2)
@@ -246,14 +274,14 @@ public class TestInGUI extends TestCase {
                 .add(new EnterTruthTable(0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1))
                 .press("F1")
                 .delay(500)
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 146, 110, new Color(215, 175, 175)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 266, 109, new Color(187, 187, 221)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 86, 169, new Color(255, 187, 187)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 205, 169, new Color(127, 255, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 145, 228, new Color(127, 127, 255)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 266, 230, new Color(255, 175, 255)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 86, 288, new Color(242, 242, 191)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 205, 289, new Color(127, 255, 255)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 197, 110, new Color(255, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 317, 108, new Color(127, 255, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 137, 169, new Color(191, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 257, 170, new Color(127, 127, 191)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 197, 228, new Color(227, 227, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 316, 228, new Color(127, 255, 255)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 137, 290, new Color(127, 127, 255)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 257, 290, new Color(255, 127, 255)))
 //                .add(new GuiTester.ColorPickerCreator(KarnaughMapComponent.class))
 //                .ask("Shows the k-map a checkerboard pattern?")
                 .add(new GuiTester.CloseTopMost())
@@ -263,14 +291,14 @@ public class TestInGUI extends TestCase {
     public void testEdges() {
         new GuiTester()
                 .use(createNew4VarTruthTable)
-                .add(new EnterTruthTable(0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1))
+                .add(new EnterTruthTable(1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0))
                 .press("F1")
                 .delay(500)
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 136, 100, new Color(255, 127, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 266, 100, new Color(255, 127, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 266, 305, new Color(255, 127, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 136, 305, new Color(255, 127, 127)))
-//                .add(new GuiTester.ColorPickerCreator())
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 137, 98, new Color(255, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 265, 95, new Color(255, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 265, 291, new Color(255, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 137, 296, new Color(255, 127, 127)))
+//                .add(new GuiTester.ColorPickerCreator(KarnaughMapComponent.class))
 //                .ask("Are the edges covered in the k-map?")
                 .add(new GuiTester.CloseTopMost())
                 .execute();
@@ -287,17 +315,16 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT", 3)
                 .add(new EnterTruthTable(0, 0, 0, 1, 0, 1, 1, 1))
                 .press("F1")
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 136, 230, new Color(255, 127, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 209, 230, new Color(127, 255, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 311, 184, new Color(191, 127, 127)))
-                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 266, 231, new Color(255, 127, 127)))
-//                .add(new GuiTester.ColorPickerCreator())
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 213, 179, new Color(191, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 144, 231, new Color(255, 127, 127)))
+                .add(new GuiTester.ColorPicker(KarnaughMapComponent.class, 315, 230, new Color(127, 255, 127)))
+//                .add(new GuiTester.ColorPickerCreator(KarnaughMapComponent.class))
 //                .ask("Shows the k-map a 'two out of three' pattern?")
                 .add(new GuiTester.CloseTopMost())
                 .execute();
     }
 
-    private GuiTester create4BitCounterTruthTable = new GuiTester()
+    private final GuiTester create4BitCounterTruthTable = new GuiTester()
             .press("F10")
             .press("RIGHT", 4)
             .press("DOWN", 2)
@@ -404,7 +431,7 @@ public class TestInGUI extends TestCase {
                 .add(new SelectAll())
                 .press("DELETE")
                 .press("control typed v")
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .press("F1")
                 .press("F8")
                 .delay(500)
@@ -436,7 +463,7 @@ public class TestInGUI extends TestCase {
                 .press("control typed a")
                 .typeTempFile("test")
                 .press("ENTER")
-                .delay(300)
+                .delay(600)
                 .add(new GuiTester.WaitFor(() -> {
                     Window activeWindow = FocusManager.getCurrentManager().getActiveWindow();
                     return !(activeWindow instanceof Main || activeWindow instanceof TableDialog);
@@ -450,8 +477,8 @@ public class TestInGUI extends TestCase {
     public void testTestEditor() {
         new GuiTester("dig/manualError/11_editTest.dig")
                 .delay(300)
-                .add(new SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION)))
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .add(new SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.DESCRIPTION)))
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(300)
                 .type("testIdentzz")
                 .delay(300)
@@ -461,10 +488,10 @@ public class TestInGUI extends TestCase {
                 .type("A B C\n0 0 0\n0 1 0\n1 0 0\n1 1 1")
                 .delay(300)
                 .press("F1")
-                .press("TAB")
+                .press("TAB", 2)
                 .press("SPACE")
                 .delay(500)
-                .press("TAB", 4)
+                .press("TAB", 5)
                 .press("SPACE")
                 .delay(500)
                 .press("F8")
@@ -479,17 +506,17 @@ public class TestInGUI extends TestCase {
     public void testSplitWire() {
         new GuiTester()
                 .mouseMove(100, 100)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .press('d')
                 .mouseMove(300, 300)
-                .mouseClick(InputEvent.BUTTON1_MASK)
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(1, main.getCircuitComponent().getCircuit().getWires().size())))
                 .mouseMove(200, 200)
                 .press('s')
                 .mouseMove(250, 150)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(2, main.getCircuitComponent().getCircuit().getWires().size())))
                 .execute();
@@ -531,7 +558,7 @@ public class TestInGUI extends TestCase {
                             List<Terminal> n = main.getModel().findNode(Terminal.class);
                             assertEquals(1, n.size());
                             Terminal t = n.get(0);
-                            assertEquals("\nHello World!", t.getTerminalDialog().getText());
+                            assertEquals("\nHello World!", t.getTerminalInterface().getText());
                         }))
                 .execute();
     }
@@ -545,11 +572,11 @@ public class TestInGUI extends TestCase {
                             .setShapeFactory(cc.getLibrary().getShapeFactory());
                     cc.setPartToInsert(ve);
                 }))
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .mouseMove(100, 100)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .mouseMove(400, 400)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class, (gt, main) -> {
                     final Circuit c = main.getCircuitComponent().getCircuit();
                     assertEquals(1, c.getElements().size());
@@ -570,7 +597,7 @@ public class TestInGUI extends TestCase {
                             .setShapeFactory(cc.getLibrary().getShapeFactory());
                     cc.setPartToInsert(ve);
                 }))
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .mouseMove(100, 100)
                 .press("PLUS")
                 .press("PLUS")
@@ -597,19 +624,19 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT", 5)
                 .press("DOWN", "RIGHT", "ENTER")
                 .mouseMove(100, 150)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(1, main.getCircuitComponent().getCircuit().getElements().size())))
                 .mouseMove(200, 150)
                 .press('l')
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(2, main.getCircuitComponent().getCircuit().getElements().size())))
                 .mouseMove(80, 130)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .press("control typed d")
                 .mouseMove(100, 250)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(3, main.getCircuitComponent().getCircuit().getElements().size())))
                 .execute();
@@ -621,7 +648,7 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT", 5)
                 .press("DOWN", "RIGHT", "ENTER")
                 .mouseMove(100, 150)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(100)
 
                 // aboard with escape
@@ -678,7 +705,7 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT", 5)
                 .press("DOWN", "RIGHT", "ENTER")
                 .mouseMove(100, 150)
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(100)
 
                 // discard changes
@@ -749,7 +776,7 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT")
                 .press("DOWN", 4)
                 .press("ENTER")
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(Main.class,
                         (gt, main) -> assertEquals(7, main.getCircuitComponent().getCircuit().getElements().size())))
                 .execute();
@@ -758,7 +785,7 @@ public class TestInGUI extends TestCase {
 
     public void test74xxUsage() {
         new GuiTester()
-                .add(new DrawCircuit("../../main/dig/74xx/xor.dig"))
+                .add(new DrawCircuit("../../main/dig/74xx/74xx_xor.dig"))
                 .press("F8")
                 .delay(500)
                 .add(new GuiTester.CheckTextInWindow<>(ValueTableDialog.class, Lang.get("msg_test_N_Passed", "")))
@@ -774,28 +801,28 @@ public class TestInGUI extends TestCase {
                 .delay(500)
                 .add(new SetMouseToElement(v -> v.equalsDescription(In.DESCRIPTION)))
 
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .type("0x44")
                 .press("ENTER")
                 .delay(500)
                 .add(new CheckOutputValue(0x44))
 
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .type("44")
                 .press("ENTER")
                 .delay(500)
 
                 .add(new CheckOutputValue(44))
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .type("0b111")
                 .press("ENTER")
                 .delay(500)
                 .add(new CheckOutputValue(7))
 
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .press("shift typed #")   // works only on german keyboard layout
                 .press("shift typed A")
@@ -804,10 +831,10 @@ public class TestInGUI extends TestCase {
                 .delay(500)
                 .add(new CheckOutputValue('A'))
 
-                .mouseClick(InputEvent.BUTTON1_MASK)
+                .mouseClick(InputEvent.BUTTON1_DOWN_MASK)
                 .delay(500)
                 .type("0")
-                .press("TAB", 5)
+                .press("TAB", 8)
                 .press("SPACE", "ENTER")
                 .delay(500)
                 .add(new CheckOutputValue(8))
@@ -839,7 +866,7 @@ public class TestInGUI extends TestCase {
     public void testGroupEdit() {
         new GuiTester("dig/manualError/12_groupEdit.dig")
                 .add(new SelectAll())
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(500)
                 .press("TAB", 2)
                 .type("6")
@@ -857,7 +884,7 @@ public class TestInGUI extends TestCase {
     public void testInputInvertEdit() {
         new GuiTester("dig/manualError/14_inputInvert.dig")
                 .add(new SetMouseToElement((v) -> v.equalsDescription(And.DESCRIPTION)))
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(500)
                 .press("TAB", 3)
                 .press("SPACE")
@@ -877,7 +904,7 @@ public class TestInGUI extends TestCase {
     public void testDataEditor() {
         new GuiTester("dig/manualError/15_romDataEditor.dig")
                 .add(new SetMouseToElement((v) -> v.equalsDescription(ROM.DESCRIPTION)))
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(500)
                 .press("TAB", "SPACE")
                 .delay(500)
@@ -917,7 +944,7 @@ public class TestInGUI extends TestCase {
                 .press("RIGHT", 1)
                 .press("DOWN", 1)
                 .press("ENTER", 1)
-                .press("control TAB", 4)
+                .press("control TAB", 7)
                 .press("RIGHT", 1)
                 .add(new GuiTester.SetFocusTo<>(AttributeDialog.class,
                         b -> b instanceof JButton && Lang.get("btn_edit").equals(((JButton) b).getText())))
@@ -962,7 +989,7 @@ public class TestInGUI extends TestCase {
     public void testGhdlCheckCode() {
         new GuiTester("dig/external/ghdl/ghdl.dig")
                 .add(new SetMouseToElement(v -> v.equalsDescription(External.DESCRIPTION)))
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(500)
                 .add(new GuiTester.SetFocusTo<>(AttributeDialog.class,
                         c -> c instanceof JButton && ((JButton) c).getText().equals(Lang.get("btn_checkCode"))))
@@ -1008,7 +1035,7 @@ public class TestInGUI extends TestCase {
     public void testNetRename() {
         new GuiTester("dig/net/netRename.dig")
                 .add(new SetMouseToElement(v -> v.equalsDescription(Tunnel.DESCRIPTION) && v.getPos().x < 400))
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .delay(200)
                 .type("et")
                 .press("ENTER")
@@ -1042,38 +1069,38 @@ public class TestInGUI extends TestCase {
                 .press("F10")
                 .press("control N")
                 .mouseMove(100, 200)
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(AttributeDialog.class))
                 .type("Aus")
                 .press("ENTER")
                 .delay(100)
                 .mouseMove(400, 200)
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .add(new GuiTester.WindowCheck<>(AttributeDialog.class))
                 .type("Ein")
                 .press("ENTER")
                 .delay(100)
-                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON3_MASK))
+                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON3_DOWN_MASK))
                 .mouseMove(100, 200)
-                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_MASK))
+                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_DOWN_MASK))
                 .delay(100)
                 .mouseMove(250, 200)
-                .mouseClick(InputEvent.BUTTON3_MASK)
+                .mouseClick(InputEvent.BUTTON3_DOWN_MASK)
                 .type("A")
                 .press("ENTER")
                 .delay(100)
                 .mouseMove(100, 200)
-                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON3_MASK))
+                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON3_DOWN_MASK))
                 .mouseMove(400, 200)
-                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_MASK))
+                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_DOWN_MASK))
                 .add(new GuiTester.SetFocusTo<>(FSMFrame.class, component -> component instanceof JComboBox))
                 .press("DOWN", 2)
                 .press("ENTER")
                 .delay(100)
                 .mouseMove(100, 200)
-                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON1_MASK))
+                .add(guiTester -> guiTester.mousePressNow(InputEvent.BUTTON1_DOWN_MASK))
                 .mouseMove(100, 300)
-                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_MASK))
+                .add(guiTester -> guiTester.mouseReleaseNow(InputEvent.BUTTON3_DOWN_MASK))
                 .add(new GuiTester.WindowCheck<>(FSMFrame.class, (guiTester, window) -> {
                     final FSM fsm = window.getFSM();
                     assertEquals(2, fsm.getStates().size());
@@ -1091,6 +1118,28 @@ public class TestInGUI extends TestCase {
                 .execute();
     }
 
+    public void testRemoteInterface() throws InterruptedException, RemoteException {
+        Main m = new Main.MainBuilder()
+                .setFileToOpen(new File(Resources.getRoot(), "dig/remoteInterface/measure.dig"))
+                .build();
+
+        SwingUtilities.invokeLater(() -> m.setVisible(true));
+        DigitalRemoteInterface ri = m;
+
+        Thread.sleep(1000);
+        ri.start(null);
+        Thread.sleep(1000);
+        String json = ri.measure();
+        assertEquals("{\"Q\":0,\"C\":0}", json);
+        Thread.sleep(1000);
+        ri.doSingleStep();
+        Thread.sleep(1000);
+        json = ri.measure();
+        assertEquals("{\"Q\":1,\"C\":0}", json);
+        Thread.sleep(1000);
+        ri.stop();
+        m.dispose();
+    }
 
     public static class CheckErrorDialog extends GuiTester.WindowCheck<ErrorMessage.ErrorDialog> {
         private final String[] expected;
@@ -1125,7 +1174,7 @@ public class TestInGUI extends TestCase {
         }
     }
 
-    private class EnterTruthTable implements GuiTester.Runnable {
+    private static class EnterTruthTable implements GuiTester.Runnable {
         private final int[] values;
 
         public EnterTruthTable(int... values) {
@@ -1144,7 +1193,7 @@ public class TestInGUI extends TestCase {
         }
     }
 
-    private class DrawCircuit extends GuiTester.WindowCheck<Main> {
+    private static class DrawCircuit extends GuiTester.WindowCheck<Main> {
         private final String filename;
 
         public DrawCircuit(String filename) {
@@ -1171,14 +1220,13 @@ public class TestInGUI extends TestCase {
             xMin -= loc.x + SIZE * 5;
             yMin -= loc.y + SIZE * 2;
 
+            boolean firstWire = true;
             for (Wire w : circuit.getWires()) {
-                guiTester.mouseClickNow(w.p1.x - xMin, w.p1.y - yMin, InputEvent.BUTTON1_MASK);
-                if (w.p1.x != w.p2.x && w.p1.y != w.p2.y)
-                    guiTester.typeNow("typed d");
-
-                guiTester.mouseClickNow(w.p2.x - xMin, w.p2.y - yMin, InputEvent.BUTTON1_MASK);
-                Thread.sleep(50);
-                guiTester.mouseClickNow(w.p2.x - xMin, w.p2.y - yMin, InputEvent.BUTTON3_MASK);
+                if (firstWire) {       // Draw first wire twice! Sometimes the first wire is lost and i can't figure out why!
+                    firstWire = false; // This is a dirty hack!
+                    drawWire(guiTester, xMin, yMin, w);
+                }
+                drawWire(guiTester, xMin, yMin, w);
             }
 
             for (VisualElement v : circuit.getElements()) {
@@ -1187,9 +1235,19 @@ public class TestInGUI extends TestCase {
                 final GraphicMinMax minMax = v.getMinMax(false);
                 pos = pos.add(minMax.getMax());
                 main.getCircuitComponent().setPartToInsert(v);
-                guiTester.mouseClickNow(pos.x - xMin, pos.y - yMin, InputEvent.BUTTON1_MASK);
+                guiTester.mouseClickNow(pos.x - xMin, pos.y - yMin, InputEvent.BUTTON1_DOWN_MASK);
                 Thread.sleep(400);
             }
+        }
+
+        private void drawWire(GuiTester guiTester, int xMin, int yMin, Wire w) throws InterruptedException {
+            guiTester.mouseClickNow(w.p1.x - xMin, w.p1.y - yMin, InputEvent.BUTTON1_DOWN_MASK);
+            if (w.p1.x != w.p2.x && w.p1.y != w.p2.y)
+                guiTester.typeNow("typed d");
+
+            guiTester.mouseClickNow(w.p2.x - xMin, w.p2.y - yMin, InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(50);
+            guiTester.mouseClickNow(w.p2.x - xMin, w.p2.y - yMin, InputEvent.BUTTON3_DOWN_MASK);
         }
     }
 
@@ -1201,7 +1259,7 @@ public class TestInGUI extends TestCase {
         return new Point(ci.x - ma.x, ci.y - ma.y);
     }
 
-    private class SelectAll extends GuiTester.WindowCheck<Main> {
+    private static class SelectAll extends GuiTester.WindowCheck<Main> {
         /**
          * Creates a new instance
          */
@@ -1214,13 +1272,13 @@ public class TestInGUI extends TestCase {
             Point loc = getCircuitPos(main);
             CircuitComponent c = main.getCircuitComponent();
             guiTester.mouseMoveNow(loc.x + 2, loc.y + 2);
-            guiTester.mousePressNow(InputEvent.BUTTON1_MASK);
+            guiTester.mousePressNow(InputEvent.BUTTON1_DOWN_MASK);
             guiTester.mouseMoveNow(loc.x + c.getWidth() - 2, loc.y + c.getHeight() - 2);
-            guiTester.mouseReleaseNow(InputEvent.BUTTON1_MASK);
+            guiTester.mouseReleaseNow(InputEvent.BUTTON1_DOWN_MASK);
         }
     }
 
-    private class CheckColorInCircuit extends GuiTester.WindowCheck<Main> {
+    private static class CheckColorInCircuit extends GuiTester.WindowCheck<Main> {
         private final ElementTypeDescription description;
         private final int dx;
         private final int dy;
@@ -1302,7 +1360,7 @@ public class TestInGUI extends TestCase {
                     SwingUtilities.convertPointToScreen(p, cc);
                     guiTester.getRobot().mouseMove(p.x, p.y);
                     Thread.sleep(100);
-                    guiTester.mouseClickNow(InputEvent.BUTTON1_MASK);
+                    guiTester.mouseClickNow(InputEvent.BUTTON1_DOWN_MASK);
                     Thread.sleep(500);
                 }
         }
@@ -1342,7 +1400,7 @@ public class TestInGUI extends TestCase {
         }
     }
 
-    private class AddTestCaseToCircuit extends GuiTester.WindowCheck<Main> {
+    private static class AddTestCaseToCircuit extends GuiTester.WindowCheck<Main> {
         private final String testdata;
 
         private AddTestCaseToCircuit(String testdata) {
@@ -1351,11 +1409,15 @@ public class TestInGUI extends TestCase {
         }
 
         @Override
-        public void checkWindow(GuiTester gt, Main main) throws Exception {
-            main.getCircuitComponent().getCircuit().add(
-                    new VisualElement(TestCaseElement.TESTCASEDESCRIPTION.getName())
-                            .setAttribute(TESTDATA, new TestCaseDescription(testdata))
-                            .setShapeFactory(main.getCircuitComponent().getLibrary().getShapeFactory()));
+        public void checkWindow(GuiTester gt, Main main) {
+            try {
+                main.getCircuitComponent().getCircuit().add(
+                        new VisualElement(TestCaseElement.DESCRIPTION.getName())
+                                .setAttribute(TESTDATA, new TestCaseDescription(testdata))
+                                .setShapeFactory(main.getCircuitComponent().getLibrary().getShapeFactory()));
+            } catch (IOException | ParserException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

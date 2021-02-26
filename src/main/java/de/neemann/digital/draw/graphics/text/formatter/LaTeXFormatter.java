@@ -25,8 +25,9 @@ public final class LaTeXFormatter {
      * @return the formatted string
      */
     public static String format(Expression exp) {
-        return format(new ExpressionToText().createText(exp, FormatToExpression.FORMATTER_LATEX), true);
+        return format(new ExpressionToText().createText(exp, FormatToExpression.LATEX), true);
     }
+
     /**
      * Formats the given text
      *
@@ -108,7 +109,29 @@ public final class LaTeXFormatter {
                 else
                     return "\\textgreater{}";
             case '&':
-                return "\\&";
+                if (inMath)
+                    return "\\ \\&\\ ";
+                else
+                    return "\\&";
+            case '|':
+                if (inMath)
+                    return "\\ |\\ ";
+                else
+                    return "|";
+            case '_':
+                return "\\_";
+            case '\\':
+                return "\\\\";
+            case '∑':
+                if (inMath)
+                    return "\\sum ";
+                else
+                    return "$\\sum$";
+            case '∏':
+                if (inMath)
+                    return "\\prod ";
+                else
+                    return "$\\prod$";
             default:
                 return "" + aChar;
         }

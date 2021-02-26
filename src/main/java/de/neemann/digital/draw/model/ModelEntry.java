@@ -8,12 +8,12 @@ package de.neemann.digital.draw.model;
 import de.neemann.digital.core.NodeException;
 import de.neemann.digital.core.ObservableValue;
 import de.neemann.digital.core.ObservableValues;
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.element.Element;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescription;
 import de.neemann.digital.core.element.PinDescriptions;
 import de.neemann.digital.draw.elements.*;
+import de.neemann.digital.gui.components.CircuitModifier;
 import de.neemann.digital.lang.Lang;
 
 import java.io.File;
@@ -111,13 +111,14 @@ public class ModelEntry {
     /**
      * Connects this model to the gui.
      *
-     * @param guiObserver the observer which could be notified if the a repaint is necessary
+     * @param circuitModifier Used to modify the circuit by the running model
      */
-    public void connectToGui(Observer guiObserver) {
+    public void connectToGui(CircuitModifier circuitModifier) {
         if (!isNestedElement) {
             if (ioState == null)
                 throw new RuntimeException("call applyInputs before connectToGui");
-            visualElement.setState(ioState, guiObserver);
+            visualElement.setState(ioState);
+            element.enableCircuitModification(visualElement, circuitModifier);
         }
     }
 

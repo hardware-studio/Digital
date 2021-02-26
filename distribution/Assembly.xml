@@ -19,7 +19,23 @@
             <outputDirectory>/</outputDirectory>
         </file>
         <file>
-            <source>${basedir}/distribution/Digital.sh</source>
+            <source>${basedir}/distribution/linux/Digital.sh</source>
+            <outputDirectory>/</outputDirectory>
+        </file>
+        <file>
+            <source>${basedir}/distribution/linux/install.sh</source>
+            <outputDirectory>/</outputDirectory>
+        </file>
+        <file>
+            <source>${basedir}/distribution/linux/desktop.template</source>
+            <outputDirectory>/linux/</outputDirectory>
+        </file>
+        <file>
+            <source>${basedir}/distribution/linux/digital-simulator.xml</source>
+            <outputDirectory>/linux/</outputDirectory>
+        </file>
+        <file>
+            <source>${basedir}/src/main/svg/icon.svg</source>
             <outputDirectory>/</outputDirectory>
         </file>
         <file>
@@ -53,7 +69,7 @@
         </fileSet>
         <fileSet>
             <directory>${basedir}/src/main/dig/lib</directory>
-            <outputDirectory>/examples/lib/</outputDirectory>
+            <outputDirectory>/lib/</outputDirectory>
             <includes>
                 <include>**/*.dig</include>
                 <include>**/*.txt</include>

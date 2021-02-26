@@ -84,7 +84,7 @@ public class CuplExporter implements ExpressionExporter<CuplExporter> {
         this.date = date;
         this.devName = devName;
         this.pinMap = pinMap;
-        builder = new CuplBuilder();
+        builder = new CuplBuilder(pinMap);
         cleanNameBuilder = new CleanNameBuilder(builder);
     }
 
@@ -171,7 +171,7 @@ public class CuplExporter implements ExpressionExporter<CuplExporter> {
             out.append("\r\n/* sequential logic */\r\n");
             for (Map.Entry<String, Expression> c : builder.getRegistered().entrySet()) {
                 out.append(c.getKey()).append(".D = ");
-                breakLines(out, FormatToExpression.FORMATTER_CUPL.format(c.getValue()));
+                breakLines(out, FormatToExpression.CUPL.format(c.getValue()));
                 out.append(";\r\n");
                 sequentialWritten(out, c.getKey());
             }
@@ -181,7 +181,7 @@ public class CuplExporter implements ExpressionExporter<CuplExporter> {
             out.append("\r\n/* combinatorial logic */\r\n");
             for (Map.Entry<String, Expression> c : builder.getCombinatorial().entrySet()) {
                 out.append(c.getKey()).append(" = ");
-                breakLines(out, FormatToExpression.FORMATTER_CUPL.format(c.getValue()));
+                breakLines(out, FormatToExpression.CUPL.format(c.getValue()));
                 out.append(";\r\n");
             }
         }
@@ -228,14 +228,15 @@ public class CuplExporter implements ExpressionExporter<CuplExporter> {
     protected void sequentialWritten(Writer out, String name) throws IOException {
     }
 
-    private final class CuplBuilder extends BuilderCollector {
+    private static final class CuplBuilder extends BuilderCollectorGAL {
         private final NotAllowedVariablesVisitor notAllowedVariablesVisitor = new NotAllowedVariablesVisitor();
+
+        private CuplBuilder(PinMap pinMap) {
+            super(pinMap);
+        }
 
         @Override
         public BuilderCollector addCombinatorial(String name, Expression expression) throws BuilderException {
-            if (pinMap.isSimpleAlias(name, expression))
-                return this;  // ignore simple variables!
-
             expression.traverse(notAllowedVariablesVisitor);
             notAllowedVariablesVisitor.check(name);
             return super.addCombinatorial(name, expression);

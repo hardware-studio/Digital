@@ -6,7 +6,6 @@
 package de.neemann.digital.docu;
 
 import de.neemann.digital.analyse.TruthTable;
-import de.neemann.digital.analyse.TruthTableTableModel;
 import de.neemann.digital.analyse.expression.format.FormatToExpression;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.fsm.gui.FSMFrame;
@@ -50,7 +49,7 @@ public class ScreenShots {
     private static Main mainStatic;
 
     public static void main(String[] args) {
-        FormatToExpression.setDefaultFormat(FormatToExpression.FORMATTER_UNICODE_NOAND);
+        Settings.getInstance().getAttributes().set(Keys.SETTINGS_EXPRESSION_FORMAT, FormatToExpression.UNICODE_NOAND);
         Settings.getInstance().getAttributes().set(Keys.SETTINGS_DEFAULT_TREESELECT, false);
         Settings.getInstance().getAttributes().set(Keys.SETTINGS_GRID, true);
 //        mainScreenShot();
@@ -91,6 +90,20 @@ public class ScreenShots {
                 .set(Keys.SETTINGS_IEEE_SHAPES, true);
         firstSteps();
         hierarchicalDesign();
+
+        // Chinese
+        Lang.setActualRuntimeLanguage(new Language("zh"));
+        Settings.getInstance().getAttributes()
+                .set(Keys.SETTINGS_IEEE_SHAPES, true);
+        firstSteps();
+        hierarchicalDesign();
+
+        // French
+        Lang.setActualRuntimeLanguage(new Language("fr"));
+        Settings.getInstance().getAttributes()
+                .set(Keys.SETTINGS_IEEE_SHAPES, true);
+        firstSteps();
+        hierarchicalDesign();
     }
 
     private static void mainScreenShot() {
@@ -103,14 +116,10 @@ public class ScreenShots {
         new GuiTester("../../main/dig/processor/Processor.dig", "examples/processor/Processor.dig")
                 .press(' ')
                 .delay(4000)
-                .add(new GuiTester.WindowCheck<>(GraphicDialog.class, (gt, gd) -> {
-                    graphic = gd;
-                    final Main main = (Main) gd.getParent();
-                    main.getCircuitComponent().requestFocus();
+                .add(new GuiTester.WindowCheck<>(Main.class, (gt, main) -> {
+                    main.ensureModelIsStopped();
+                    main.getWindowPosManager().closeAll();
                 }))
-                .delay(500)
-                .press(' ')
-                .add((gt) -> graphic.dispose())
                 .delay(500)
                 .press("F1")
                 .add(new MainScreenShot("distribution/screenshot.png"))
@@ -159,7 +168,7 @@ public class ScreenShots {
                 .add(new GuiTester.CloseTopMost())
                 .add(new GuiTester.CloseTopMost())
                 .execute();/**/
-        
+
         File trafficLight = new File(Resources.getRoot(), "../../main/fsm/trafficLightBlink.fsm");
         new GuiTester()
                 .press("F10")
@@ -206,10 +215,10 @@ public class ScreenShots {
                 .delay(500)
                 .add(new GuiTester.WindowCheck<>(FSMFrame.class, (gt, fsmFrame) -> {
                     fsmFrame.loadFile(trafficLight);
-                    fsmFrame.getContentPane().setPreferredSize(new Dimension(550, 400));
+                    fsmFrame.getContentPane().setPreferredSize(new Dimension(500, 400));
                     fsmFrame.pack();
                     final Point location = mainStatic.getLocation();
-                    fsmFrame.setLocation(location.x + 450, location.y + 120);
+                    fsmFrame.setLocation(location.x + 500, location.y + 120);
                     fsmFrame.setAlwaysOnTop(true);
                     fsmFrame.setTitle(trafficLight.getName());
                     mainStatic.requestFocus();
@@ -219,7 +228,7 @@ public class ScreenShots {
                 .add(new GuiTester.CloseTopMost())
                 .add(new GuiTester.CloseTopMost())
                 .add(new GuiTester.CloseTopMost())
-                .execute();
+                .execute();/**/
     }
 
     private static GuiTester.WindowCheck<Window> closeAllSolutionsDialog() {
@@ -316,7 +325,7 @@ public class ScreenShots {
                 .add(new ScreenShot<>(TableDialog.class).useParent())
                 // k-map
                 .press("F10")
-                .press("RIGHT", 5)
+                .press("RIGHT", 4)
                 .press("DOWN", 1)
                 .add(new ScreenShot<>(TableDialog.class).useParent())
                 .press("ENTER")
@@ -343,7 +352,7 @@ public class ScreenShots {
                 .add(new GuiTester.WindowCheck<>(Main.class, (gt, w) -> w.setSize(WIN_DX, WIN_DY)))
                 .delay(500)
                 .add(new ScreenShot<>(Main.class))
-                .add(new TestInGUI.SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION)))
+                .add(new TestInGUI.SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.DESCRIPTION)))
                 .mouseClick(InputEvent.BUTTON3_MASK)
                 .delay(500)
                 .add(new GuiTester.WindowCheck<>(AttributeDialog.class, (gt, w) -> {
@@ -381,7 +390,7 @@ public class ScreenShots {
                 .add(new GuiTester.WindowCheck<>(Main.class, (gt, w) -> w.setSize(WIN_DX, WIN_DY)))
                 .delay(500)
                 .add(new ScreenShot<>(Main.class))
-                .add(new TestInGUI.SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION)))
+                .add(new TestInGUI.SetMouseToElement((v) -> v.equalsDescription(TestCaseElement.DESCRIPTION)))
                 .mouseClick(InputEvent.BUTTON3_MASK)
                 .delay(500)
                 .add(new GuiTester.WindowCheck<>(AttributeDialog.class, (gt, w) -> {
@@ -447,7 +456,9 @@ public class ScreenShots {
             String str = Integer.toString(n);
             if (str.length() == 1)
                 str = '0' + str;
-            File file = new File(Resources.getRoot(), "docu/images/" + Lang.currentLanguage().getName() + "/scr" + str + ".png");
+            File dir = new File(Resources.getRoot(), "docu/images/" + Lang.currentLanguage().getName());
+            dir.mkdirs();
+            File file = new File(dir, "/scr" + str + ".png");
             ImageIO.write(image, "png", file);
             n++;
         }

@@ -5,6 +5,7 @@
  */
 package de.neemann.digital.docu;
 
+import de.neemann.digital.cli.Main;
 import de.neemann.digital.core.NodeException;
 import de.neemann.digital.core.element.*;
 import de.neemann.digital.draw.elements.PinException;
@@ -59,6 +60,8 @@ public class DocuTest extends TestCase {
                 .append(Lang.get("tableOfContent"))
                 .append("\" lang=\"")
                 .append(language)
+                .append("\" fontFamily=\"")
+                .append(language.equals("zh") ? "SansSerif,SimSun" : "SansSerif")
                 .append("\" rev=\"")
                 .append(System.getProperty("buildnumber"))
                 .append("\" revt=\"")
@@ -86,6 +89,8 @@ public class DocuTest extends TestCase {
         writeAttributes(w, CircuitComponent.getAttrList());
         w.append("    </circuit>\n");
         w.append("  </settings>\n");
+
+        writeCLIDescription(w);
 
         ElementLibrary library = new ElementLibrary();
         ShapeFactory shapeFactory = new ShapeFactory(library, !language.equals("de"));
@@ -135,6 +140,12 @@ public class DocuTest extends TestCase {
         }
         w.append("  </lib>\n");
         w.append("</root>");
+    }
+
+    private void writeCLIDescription(Writer w) throws IOException {
+        w.append("  <cli heading=\"").append(Lang.get("cli_cli")).append("\">\n");
+        new Main().printXMLDescription(w);
+        w.append("  </cli>\n");
     }
 
     private void writeAttributes(Writer w, List<Key> keyList) throws IOException {
@@ -325,7 +336,7 @@ public class DocuTest extends TestCase {
             File pdf = new File(target, basename + ".pdf");
             startFOP(fopFactory, xslFO, pdf);
 
-            copy(pdf, new File(target2, "Doc_" + l + ".pdf"));
+            copy(pdf, new File(target2, "Doc_" + l.getFileName() + ".pdf"));
         }
     }
 

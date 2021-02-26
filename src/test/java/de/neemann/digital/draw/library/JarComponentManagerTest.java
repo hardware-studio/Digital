@@ -5,24 +5,17 @@
  */
 package de.neemann.digital.draw.library;
 
-import de.neemann.digital.core.NodeException;
-import de.neemann.digital.draw.elements.PinException;
-import de.neemann.digital.draw.elements.VisualElement;
+import de.neemann.digital.draw.elements.Circuit;
 import de.neemann.digital.integration.Resources;
 import de.neemann.digital.integration.ToBreakRunner;
-import de.neemann.digital.testing.TestCaseDescription;
-import de.neemann.digital.testing.TestCaseElement;
 import de.neemann.digital.testing.TestExecutor;
-import de.neemann.digital.testing.TestingDataException;
-import de.neemann.digital.testing.parser.ParserException;
 import junit.framework.TestCase;
 
 import java.io.File;
-import java.io.IOException;
 
 public class JarComponentManagerTest extends TestCase {
 
-    public void testMissingJar() throws PinException, NodeException, IOException {
+    public void testMissingJar() throws Exception {
         try {
             new ToBreakRunner("dig/jarLib/jarLibTest.dig");
             fail();
@@ -31,7 +24,7 @@ public class JarComponentManagerTest extends TestCase {
         }
     }
 
-    public void testJarAvailable() throws PinException, NodeException, IOException, ElementNotFoundException, TestingDataException, ParserException {
+    public void testJarAvailable() throws Exception {
         ToBreakRunner br = new ToBreakRunner("dig/jarLib/jarLibTest.dig") {
             @Override
             public void initLibrary(ElementLibrary library) {
@@ -40,13 +33,7 @@ public class JarComponentManagerTest extends TestCase {
             }
         };
 
-        for (VisualElement ve : br.getCircuit().getElements()) {
-            if (ve.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION)) {
-                TestCaseDescription td = ve.getElementAttributes().get(TestCaseElement.TESTDATA);
-                TestExecutor tr = new TestExecutor(td).create(br.getModel());
-                assertTrue(tr.allPassed());
-            }
-        }
+        for (Circuit.TestCase tc : br.getCircuit().getTestCases())
+            assertTrue(new TestExecutor(tc, br.getCircuit(), br.getLibrary()).execute().allPassed());
     }
-
 }

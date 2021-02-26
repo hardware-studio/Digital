@@ -11,6 +11,7 @@ import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescriptions;
 import de.neemann.digital.core.io.In;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.draw.elements.IOState;
 import de.neemann.digital.draw.elements.Pin;
 import de.neemann.digital.draw.elements.Pins;
@@ -34,11 +35,9 @@ public class InputShape implements Shape {
 
     private final String label;
     private final PinDescriptions outputs;
-    private final IntFormat format;
+    private final ValueFormatter formatter;
     private final boolean isHighZ;
     private final boolean avoidLow;
-    private final long min;
-    private final long max;
     private final int bits;
     private IOState ioState;
     private SingleValueDialog dialog;
@@ -60,20 +59,13 @@ public class InputShape implements Shape {
         else
             this.label = attr.getLabel() + " (" + pinNumber + ")";
 
-        format = attr.get(Keys.INT_FORMAT);
+        formatter = attr.getValueFormatter();
 
         isHighZ = attr.get(Keys.INPUT_DEFAULT).isHighZ() || attr.get(Keys.IS_HIGH_Z);
 
         avoidLow = isHighZ && attr.get(Keys.AVOID_ACTIVE_LOW);
 
         bits = attr.getBits();
-        if (format.isSigned()) {
-            max = Bits.mask(bits) >> 1;
-            min = -max - 1;
-        } else {
-            min = 0;
-            max = Bits.mask(bits);
-        }
     }
 
     @Override
@@ -82,9 +74,8 @@ public class InputShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         this.ioState = ioState;
-        ioState.getOutput(0).addObserverToValue(guiObserver);
         return new InputInteractor();
     }
 
@@ -120,8 +111,11 @@ public class InputShape implements Shape {
             if (value != null) {
                 style = Style.getWireStyle(value);
                 if (value.getBits() > 1) {
+                    Value v = value;
+                    if (inValue != null)
+                        v = inValue;
                     Vector textPos = new Vector(-1 - OUT_SIZE, -4 - OUT_SIZE);
-                    graphic.drawText(textPos, format.formatToView(value), Orientation.CENTERBOTTOM, Style.NORMAL);
+                    graphic.drawText(textPos, formatter.formatToView(v), Orientation.CENTERBOTTOM, Style.NORMAL);
                 } else {
                     if (inValue != null && !inValue.isEqual(value))
                         graphic.drawPolygon(box, Style.getWireStyle(inValue));
@@ -145,10 +139,10 @@ public class InputShape implements Shape {
         private long lastValueSet;
 
         @Override
-        public boolean clicked(CircuitComponent cc, Point pos, IOState ioState, Element element, SyncAccess modelSync) {
+        public void clicked(CircuitComponent cc, Point pos, IOState ioState, Element element, SyncAccess modelSync) {
             ObservableValue value = ioState.getOutput(0);
             if (bits == 1) {
-                modelSync.access(() -> {
+                modelSync.modify(() -> {
                     if (isHighZ) {
                         if (value.isHighZ()) {
                             if (avoidLow)
@@ -160,27 +154,25 @@ public class InputShape implements Shape {
                     } else
                         value.setValue(1 - value.getValue());
                 });
-                return true;
             } else {
                 if (dialog == null || !dialog.isVisible()) {
                     Model model = ((In) element).getModel();
-                    dialog = new SingleValueDialog(model.getWindowPosManager().getMainFrame(), pos, label, value, isHighZ, cc, model);
+                    dialog = new SingleValueDialog(model.getWindowPosManager().getMainFrame(), pos, label, value, isHighZ, model)
+                            .setSelectedFormat(formatter);
                     dialog.setVisible(true);
                 } else
                     dialog.requestFocus();
 
-                return false;
             }
         }
 
         @Override
-        public boolean pressed(CircuitComponent cc, Point pos, IOState ioState, Element element, SyncAccess modelSync) {
+        public void pressed(CircuitComponent cc, Point pos, IOState ioState, Element element, SyncAccess modelSync) {
             isDrag = false;
-            return false;
         }
 
         @Override
-        public boolean dragged(CircuitComponent cc, Point posOnScreen, Vector pos, Transform transform, IOState ioState, Element element, SyncAccess modelSync) {
+        public void dragged(CircuitComponent cc, Point posOnScreen, Vector pos, Transform transform, IOState ioState, Element element, SyncAccess modelSync) {
             ObservableValue value = ioState.getOutput(0);
             if (bits > 1 && !value.isHighZ()) {
                 if (!isDrag) {
@@ -189,17 +181,17 @@ public class InputShape implements Shape {
                     startValue = value.getValue();
                     lastValueSet = startValue;
                 } else {
-                    int delta = startPos.y - posOnScreen.y;
-                    long v = startValue + (delta * max) / SLIDER_HEIGHT;
-                    long val = Math.max(min, Math.min(v, max));
-                    if (val != lastValueSet) {
-                        modelSync.access(() -> value.setValue(val));
-                        lastValueSet = val;
-                        return true;
+                    int dy = startPos.y - posOnScreen.y;
+                    if (dy != 0) {
+                        double inc = ((double) dy) / SLIDER_HEIGHT;
+                        long val = formatter.dragValue(startValue, value.getBits(), inc);
+                        if (val != lastValueSet) {
+                            modelSync.modify(() -> value.setValue(val));
+                            lastValueSet = val;
+                        }
                     }
                 }
             }
-            return false;
         }
     }
 }

@@ -6,7 +6,6 @@
 package de.neemann.digital.draw.shapes;
 
 import de.neemann.digital.core.NodeException;
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescription;
@@ -14,8 +13,9 @@ import de.neemann.digital.core.io.In;
 import de.neemann.digital.core.io.Out;
 import de.neemann.digital.core.wiring.Clock;
 import de.neemann.digital.draw.elements.*;
-import de.neemann.digital.draw.graphics.*;
 import de.neemann.digital.draw.graphics.Polygon;
+import de.neemann.digital.draw.graphics.*;
+import de.neemann.digital.draw.library.ElementNotFoundException;
 import de.neemann.digital.draw.library.ElementTypeDescriptionCustom;
 import de.neemann.digital.lang.Lang;
 
@@ -34,8 +34,8 @@ import static de.neemann.digital.draw.shapes.GenericShape.SIZE;
  */
 public class LayoutShape implements Shape {
 
-    private int width;
-    private int height;
+    private final int width;
+    private final int height;
     private final Pins pins;
     private final Color color;
     private final String name;
@@ -49,16 +49,25 @@ public class LayoutShape implements Shape {
      *
      * @param custom            the type description
      * @param elementAttributes the local attributes
-     * @throws NodeException NodeException
-     * @throws PinException  PinException
+     * @throws NodeException            NodeException
+     * @throws PinException             PinException
+     * @throws ElementNotFoundException ElementNotFoundException
      */
-    public LayoutShape(ElementTypeDescriptionCustom custom, ElementAttributes elementAttributes) throws NodeException, PinException {
-        left = new PinList(false);
-        right = new PinList(false);
-        top = new PinList(true);
-        bottom = new PinList(true);
+    public LayoutShape(ElementTypeDescriptionCustom custom, ElementAttributes elementAttributes) throws NodeException, PinException, ElementNotFoundException {
+        String l = elementAttributes.getLabel();
+        if (l != null && l.length() > 0)
+            name = l;
+        else
+            name = custom.getShortName();
 
-        for (VisualElement ve : custom.getCircuit().getElements()) {
+        left = new PinList(name, false);
+        right = new PinList(name, false);
+        top = new PinList(name, true);
+        bottom = new PinList(name, true);
+
+        Circuit circuit = custom.getResolvedCircuit(elementAttributes);
+
+        for (VisualElement ve : circuit.getElements()) {
             if (ve.equalsDescription(In.DESCRIPTION) || ve.equalsDescription(Clock.DESCRIPTION)) {
                 switch (ve.getRotate()) {
                     case 0:
@@ -93,14 +102,14 @@ public class LayoutShape implements Shape {
             }
         }
 
-        height = Math.max(Math.max(right.size(), left.size()) + 1, custom.getAttributes().get(Keys.HEIGHT));
-        width = Math.max(Math.max(top.size(), bottom.size()) + 1, custom.getAttributes().get(Keys.WIDTH));
+        height = left.max(right.max(circuit.getAttributes().get(Keys.HEIGHT)));
+        width = top.max(bottom.max(circuit.getAttributes().get(Keys.WIDTH)));
 
         HashMap<String, PinPos> map = new HashMap<>();
-        top.createPosition(map, new Vector(((width - top.size() - 1) / 2 + 1) * SIZE, 0));
-        bottom.createPosition(map, new Vector(((width - bottom.size() - 1) / 2 + 1) * SIZE, SIZE * height));
-        left.createPosition(map, new Vector(0, ((height - left.size() - 1) / 2 + 1) * SIZE));
-        right.createPosition(map, new Vector(SIZE * width, ((height - right.size() - 1) / 2 + 1) * SIZE));
+        top.createPosition(map, new Vector(0, 0), width);
+        bottom.createPosition(map, new Vector(0, SIZE * height), width);
+        left.createPosition(map, new Vector(0, 0), height);
+        right.createPosition(map, new Vector(SIZE * width, 0), height);
 
         pins = new Pins();
         for (PinDescription p : custom.getInputDescription(elementAttributes))
@@ -108,13 +117,7 @@ public class LayoutShape implements Shape {
         for (PinDescription p : custom.getOutputDescriptions(elementAttributes))
             pins.add(createPin(map, p));
 
-        color = custom.getCircuit().getAttributes().get(Keys.BACKGROUND_COLOR);
-
-        String l = elementAttributes.getLabel();
-        if (l != null && l.length() > 0)
-            name = l;
-        else
-            name = custom.getShortName();
+        color = circuit.getAttributes().get(Keys.BACKGROUND_COLOR);
     }
 
     private Pin createPin(HashMap<String, PinPos> map, PinDescription p) throws PinException {
@@ -131,7 +134,7 @@ public class LayoutShape implements Shape {
     }
 
     @Override
-    public InteractorInterface applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public InteractorInterface applyStateMonitor(IOState ioState) {
         return null;
     }
 
@@ -145,12 +148,12 @@ public class LayoutShape implements Shape {
         graphic.drawPolygon(poly, Style.NORMAL.deriveFillStyle(color));
         graphic.drawPolygon(poly, Style.NORMAL);
 
-        if (top.size() == 0)
-            graphic.drawText(new Vector(width * SIZE / 2, -4), name, Orientation.CENTERBOTTOM, Style.NORMAL);
-        else if (bottom.size() == 0)
-            graphic.drawText(new Vector(width * SIZE / 2, height * SIZE + 4), name, Orientation.CENTERTOP, Style.NORMAL);
+        if (bottom.size() == 0)
+            graphic.drawText(new Vector(width * SIZE / 2, height * SIZE + 4), name, Orientation.CENTERTOP, Style.SHAPE_PIN);
+        else if (top.size() == 0)
+            graphic.drawText(new Vector(width * SIZE / 2, -4), name, Orientation.CENTERBOTTOM, Style.SHAPE_PIN);
         else
-            graphic.drawText(new Vector(width * SIZE / 2, height * SIZE / 2), name, Orientation.CENTERCENTER, Style.NORMAL);
+            graphic.drawText(new Vector(width * SIZE / 2, height * SIZE / 2), name, Orientation.CENTERCENTER, Style.SHAPE_PIN);
 
         for (PinPos p : left)
             graphic.drawText(p.pos.add(4, 0), p.label, Orientation.LEFTCENTER, Style.SHAPE_PIN);
@@ -165,6 +168,8 @@ public class LayoutShape implements Shape {
     private final static class PinPos implements Comparable<PinPos> {
         private final int orderPos;
         private final String label;
+        private boolean hasPosDelta;
+        private int posDelta;
         private Vector pos;
 
         private PinPos(VisualElement ve, boolean horizontal) {
@@ -173,6 +178,9 @@ public class LayoutShape implements Shape {
             else
                 orderPos = ve.getPos().y;
             label = ve.getElementAttributes().getLabel();
+
+            posDelta = ve.getElementAttributes().get(Keys.LAYOUT_SHAPE_DELTA);
+            hasPosDelta = posDelta > 0;
         }
 
         @Override
@@ -183,32 +191,76 @@ public class LayoutShape implements Shape {
     }
 
     private final static class PinList implements Iterable<PinPos> {
+        private final String name;
         private final boolean horizontal;
         private ArrayList<PinPos> pins;
+        private boolean allHavePosDeltas = false;
+        private Vector pos;
+        private int minWidth;
 
-        private PinList(boolean horizontal) {
+        private PinList(String name, boolean horizontal) {
+            this.name = name;
             this.horizontal = horizontal;
             pins = new ArrayList<>();
         }
 
         private void add(VisualElement ve) {
-            pins.add(new PinPos(ve, horizontal));
+            PinPos pp = new PinPos(ve, horizontal);
+            pins.add(pp);
+            if (pp.hasPosDelta)
+                minWidth += pp.posDelta;
+            else
+                allHavePosDeltas = false;
         }
 
         private int size() {
             return pins.size();
         }
 
-        private void createPosition(HashMap<String, PinPos> map, Vector pos) {
+        private void createPosition(HashMap<String, PinPos> map, Vector startPos, int length) throws PinException {
+            this.pos = startPos;
             Collections.sort(pins);
-            for (PinPos pp : pins) {
-                map.put(pp.label, pp);
-                pp.pos = pos;
-                if (horizontal)
-                    pos = pos.add(SIZE, 0);
-                else
-                    pos = pos.add(0, SIZE);
+
+            if (allHavePosDeltas) {
+                for (PinPos pp : pins) {
+                    move(pp.posDelta);
+                    pp.pos = pos;
+                    addToMap(map, pp);
+                }
+            } else {
+                // length: user defined width, always larger or equal to pins.size()+1
+
+                int delta = (length + 2) / (pins.size() + 1);
+
+                int pinsOnly = delta * (pins.size() - 1);
+
+                move((length - pinsOnly) / 2);
+
+                for (PinPos pp : pins) {
+                    pp.pos = pos;
+                    addToMap(map, pp);
+                    move(delta);
+                }
             }
+        }
+
+        private void addToMap(HashMap<String, PinPos> map, PinPos pp) throws PinException {
+            if (map.containsKey(pp.label))
+                throw new PinException(Lang.get("err_duplicatePinLabel", pp.label, name));
+            map.put(pp.label, pp);
+        }
+
+        private void move(int delta) {
+            if (horizontal)
+                pos = pos.add(SIZE * delta, 0);
+            else
+                pos = pos.add(0, SIZE * delta);
+        }
+
+        private int max(int m) {
+            if (allHavePosDeltas)
+                m = Math.max(m, minWidth + 1);
+            return Math.max(m, pins.size() + 1);
         }
 
         @Override

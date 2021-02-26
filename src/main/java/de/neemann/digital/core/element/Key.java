@@ -23,11 +23,14 @@ public class Key<VALUE> {
     private CheckEnabled checkEnabled;
     private boolean isSecondary;
     private boolean requiresRestart = false;
+    private boolean requiresRepaint = false;
+    private String panelId;
 
     // Both values are always null in digital.
     // Both are only used within a custom implemented component.
     private String name;
     private String description;
+    private boolean adaptiveIntFormat;
 
     /**
      * Creates a new Key.
@@ -218,7 +221,7 @@ public class Key<VALUE> {
     }
 
     /**
-     * Called if this setting needs a restart.
+     * Called if the modification of this setting needs a restart.
      *
      * @return this for chained calls
      */
@@ -232,6 +235,62 @@ public class Key<VALUE> {
      */
     public boolean getRequiresRestart() {
         return requiresRestart;
+    }
+
+    /**
+     * Called if this setting needs a repaint.
+     * This means, that the circuit graphics became invalid
+     * if this setting has changed.
+     *
+     * @return this for chained calls
+     */
+    public Key<VALUE> setRequiresRepaint() {
+        requiresRepaint = true;
+        return this;
+    }
+
+    /**
+     * @return true if changing this value needs a repaint
+     */
+    public boolean getRequiresRepaint() {
+        return requiresRepaint;
+    }
+
+    /**
+     * Enables an adaptive int format in number editors.
+     * This means that the string representation of the number is controlled
+     * by the IntFormat stored in the elements attributes.
+     *
+     * @return this for chained calls
+     */
+    public Key<VALUE> setAdaptiveIntFormat() {
+        adaptiveIntFormat = true;
+        return this;
+    }
+
+    /**
+     * @return true if adaptive int format is required
+     */
+    public boolean isAdaptiveIntFormat() {
+        return adaptiveIntFormat;
+    }
+
+    /**
+     * Moves this key to the panel with the given id
+     *
+     * @param panelId the panel id
+     * @return this for chained calls
+     */
+    public Key<VALUE> setPanelId(String panelId) {
+        this.panelId = panelId;
+        return this;
+    }
+
+    /**
+     * @return the panel id, null if no panel is set
+     */
+    public String getPanelId() {
+        return panelId;
     }
 
     /**
@@ -374,6 +433,7 @@ public class Key<VALUE> {
     public static final class KeyEnum<E extends Enum> extends Key<E> {
         private final E[] values;
         private final String[] names;
+        private final boolean toString;
 
         /**
          * Creates a new emum key
@@ -383,12 +443,29 @@ public class Key<VALUE> {
          * @param values the possible values
          */
         public KeyEnum(String key, E def, E[] values) {
+            this(key, def, values, false);
+        }
+
+        /**
+         * Creates a new emum key
+         *
+         * @param key      the key
+         * @param def      the default value
+         * @param values   the possible values
+         * @param toString if true, the names are not taken from the language file but created by calling toString()
+         */
+        public KeyEnum(String key, E def, E[] values, boolean toString) {
             super(key, def);
             this.values = values;
+            this.toString = toString;
 
             names = new String[values.length];
-            for (int i = 0; i < values.length; i++)
-                names[i] = Lang.get(getLangKey(values[i]));
+            if (toString)
+                for (int i = 0; i < values.length; i++)
+                    names[i] = values[i].toString();
+            else
+                for (int i = 0; i < values.length; i++)
+                    names[i] = Lang.get(getLangKey(values[i]));
             allowGroupEdit();
         }
 
@@ -415,6 +492,13 @@ public class Key<VALUE> {
         public String[] getNames() {
             return names;
         }
+
+        /**
+         * @return true if this enum key uses toString to create the display names
+         */
+        public boolean usesToString() {
+            return toString;
+        }
     }
 
     /**
@@ -422,7 +506,7 @@ public class Key<VALUE> {
      */
     public static final class LongString extends Key<String> {
         private int rows = 6;
-        private int columns = 30;
+        private int columns = 0;
         private boolean lineNumbers = false;
 
         /**
@@ -432,6 +516,16 @@ public class Key<VALUE> {
          */
         public LongString(String key) {
             super(key, "");
+        }
+
+        /**
+         * Creates a new Key
+         *
+         * @param key the key
+         * @param def the default value
+         */
+        public LongString(String key, String def) {
+            super(key, def);
         }
 
         /**

@@ -5,12 +5,11 @@
  */
 package de.neemann.digital.draw.shapes;
 
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.Value;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescriptions;
-import de.neemann.digital.core.IntFormat;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.draw.elements.IOState;
 import de.neemann.digital.draw.elements.Pin;
 import de.neemann.digital.draw.elements.Pins;
@@ -37,8 +36,8 @@ public class ConstShape implements Shape {
     public ConstShape(ElementAttributes attr, PinDescriptions inputs, PinDescriptions outputs) {
         this.outputs = outputs;
         int bits = attr.getBits();
-        IntFormat format = attr.get(Keys.INT_FORMAT);
-        this.value = format.formatToView(new Value(attr.get(Keys.VALUE), bits));
+        ValueFormatter formatter = attr.getValueFormatter();
+        this.value = formatter.formatToView(new Value(attr.get(Keys.VALUE), bits));
     }
 
     @Override
@@ -47,7 +46,7 @@ public class ConstShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         return null;
     }
 

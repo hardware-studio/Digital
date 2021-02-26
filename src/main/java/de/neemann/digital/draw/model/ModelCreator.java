@@ -8,7 +8,6 @@ package de.neemann.digital.draw.model;
 import de.neemann.digital.core.Model;
 import de.neemann.digital.core.Node;
 import de.neemann.digital.core.NodeException;
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.element.*;
 import de.neemann.digital.core.io.In;
 import de.neemann.digital.core.io.Out;
@@ -20,7 +19,9 @@ import de.neemann.digital.draw.graphics.Vector;
 import de.neemann.digital.draw.library.CustomElement;
 import de.neemann.digital.draw.library.ElementNotFoundException;
 import de.neemann.digital.draw.library.LibraryInterface;
+import de.neemann.digital.draw.library.ResolveGenerics;
 import de.neemann.digital.draw.shapes.Drawable;
+import de.neemann.digital.gui.components.CircuitModifier;
 import de.neemann.digital.lang.Lang;
 
 import java.util.*;
@@ -49,7 +50,24 @@ public class ModelCreator implements Iterable<ModelEntry> {
      * @throws ElementNotFoundException ElementNotFoundException
      */
     public ModelCreator(Circuit circuit, LibraryInterface library) throws PinException, NodeException, ElementNotFoundException {
-        this(circuit, library, false);
+        this(fixGenerics(circuit, library), library, false);
+    }
+
+    /**
+     * Creates a concrete circuit from a generic on.
+     * Uses the included generic init code.
+     *
+     * @param circuit the generic circuit
+     * @param library the element library
+     * @return the concrete circuit
+     * @throws NodeException            NodeException
+     * @throws ElementNotFoundException ElementNotFoundException
+     */
+    public static Circuit fixGenerics(Circuit circuit, LibraryInterface library) throws NodeException, ElementNotFoundException {
+        if (circuit.getAttributes().get(Keys.IS_GENERIC))
+            return new ResolveGenerics(circuit, library).resolveCircuit(null).getCircuit();
+        else
+            return circuit;
     }
 
     /**
@@ -152,7 +170,7 @@ public class ModelCreator implements Iterable<ModelEntry> {
                             combineNames(subName, me.getVisualElement().getElementAttributes().getLabel()),
                             depth + 1,
                             containingVisualElement != null ? containingVisualElement : me.getVisualElement(),
-                            me.getVisualElement(), library);
+                            me.getVisualElement());
                     modelCreators.add(child);
 
                     HashMap<Net, Net> netMatch = new HashMap<>();
@@ -297,12 +315,11 @@ public class ModelCreator implements Iterable<ModelEntry> {
      * Needs to be called after createModel is called!
      * Connects the gui to the model
      *
-     * @param guiObserver the observer which can be attached to {@link de.neemann.digital.core.ObservableValue}s
-     *                    which have a state dependant graphical representation.
+     * @param circuitModifier used to modify the circuit by the running model
      */
-    public void connectToGui(Observer guiObserver) {
+    public void connectToGui(CircuitModifier circuitModifier) {
         for (ModelEntry e : entries)
-            e.connectToGui(guiObserver);
+            e.connectToGui(circuitModifier);
     }
 
     /**

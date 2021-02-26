@@ -12,6 +12,7 @@ import de.neemann.digital.draw.graphics.*;
 import de.neemann.digital.gui.SaveAsHelper;
 import de.neemann.digital.gui.Settings;
 import de.neemann.digital.gui.components.OrderMerger;
+import de.neemann.digital.gui.components.table.ShowStringDialog;
 import de.neemann.digital.gui.components.testing.ValueTableDialog;
 import de.neemann.digital.lang.Lang;
 import de.neemann.gui.IconCreator;
@@ -71,25 +72,25 @@ public class GraphDialog extends JDialog implements Observer {
 
         ValueTableObserver valueTableObserver = new ValueTableObserver(microStep, signals, MAX_SAMPLE_SIZE);
 
-        GraphDialog graphDialog = new GraphDialog(owner, title, valueTableObserver.getLogData(), model)
+        GraphDialog graphDialog = new GraphDialog(owner, title, valueTableObserver.getLogData(), model, true)
                 .setColumnInfo(createColumnsInfo(signals));
 
         graphDialog.addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                model.access(() -> model.addObserver(valueTableObserver));
+                model.modify(() -> model.addObserver(valueTableObserver));
             }
 
             @Override
             public void windowClosed(WindowEvent e) {
-                model.access(() -> model.removeObserver(valueTableObserver));
+                model.modify(() -> model.removeObserver(valueTableObserver));
             }
         });
 
         return graphDialog;
     }
 
-    private static ValueTable.ColumnInfo[] createColumnsInfo(ArrayList<Signal> signals) {
+    static ValueTable.ColumnInfo[] createColumnsInfo(ArrayList<Signal> signals) {
         ValueTable.ColumnInfo[] info = new ValueTable.ColumnInfo[signals.size()];
         for (int i = 0; i < signals.size(); i++) {
             Signal s = signals.get(i);
@@ -106,7 +107,7 @@ public class GraphDialog extends JDialog implements Observer {
      * @param logData the data to visualize
      */
     public GraphDialog(Window owner, String title, ValueTable logData) {
-        this(owner, title, logData, SyncAccess.NOSYNC);
+        this(owner, title, logData, SyncAccess.NOSYNC, true);
     }
 
     /**
@@ -116,8 +117,9 @@ public class GraphDialog extends JDialog implements Observer {
      * @param title     the frame title
      * @param logData   the data to visualize
      * @param modelSync used to access the running model
+     * @param showHelp  shows the help menu item
      */
-    private GraphDialog(Window owner, String title, ValueTable logData, SyncAccess modelSync) {
+    GraphDialog(Window owner, String title, ValueTable logData, SyncAccess modelSync, boolean showHelp) {
         super(owner, title, ModalityType.MODELESS);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
@@ -189,12 +191,27 @@ public class GraphDialog extends JDialog implements Observer {
         view.addSeparator();
         view.add(showTable.createJMenuItem());
 
+        if (showHelp) {
+            JMenu help = new JMenu(Lang.get("menu_help"));
+            bar.add(help);
+            help.add(new ToolTipAction(Lang.get("btn_help")) {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    new ShowStringDialog(
+                            GraphDialog.this,
+                            Lang.get("msg_graphHelpTitle"),
+                            Lang.get("msg_graphHelp"), true)
+                            .setVisible(true);
+                }
+            }.createJMenuItem());
+        }
+
         setJMenuBar(bar);
         pack();
         setLocationRelativeTo(owner);
     }
 
-    private GraphDialog setColumnInfo(ValueTable.ColumnInfo[] columnInfo) {
+    GraphDialog setColumnInfo(ValueTable.ColumnInfo[] columnInfo) {
         this.columnInfo = columnInfo;
         return this;
     }

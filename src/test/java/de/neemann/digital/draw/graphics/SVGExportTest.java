@@ -5,30 +5,43 @@
  */
 package de.neemann.digital.draw.graphics;
 
-import de.neemann.digital.core.NodeException;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.draw.elements.Circuit;
-import de.neemann.digital.draw.elements.PinException;
-import de.neemann.digital.draw.library.ElementNotFoundException;
 import de.neemann.digital.integration.ToBreakRunner;
 import junit.framework.TestCase;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 public class SVGExportTest extends TestCase {
 
-    private static ByteArrayOutputStream export(String file, ExportFactory creator) throws NodeException, PinException, IOException, ElementNotFoundException {
+    private static ByteArrayOutputStream export(String file, ExportFactory creator) throws Exception {
         Circuit circuit = new ToBreakRunner(file).getCircuit();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         new Export(circuit, creator).export(baos);
         return baos;
     }
 
-    public void testSVGExportLabel() throws NodeException, PinException, IOException, ElementNotFoundException {
+    public void testSVGExportInOut() throws Exception {
         ElementAttributes attr = new ElementAttributes()
                 .set(SVGSettings.LATEX, true);
+
+        assertFalse(SVGSettings.PINS_IN_MATH_MODE.getDefault());
+
+        ByteArrayOutputStream baos
+                = export("dig/export/labels.dig",
+                (out) -> new GraphicSVG(out, attr));
+
+        String actual = new String(baos.toByteArray(), StandardCharsets.UTF_8);
+        assertTrue(actual.contains(">A<"));
+        assertTrue(actual.contains("$Y_n$"));
+    }
+
+    public void testSVGExportInOutMath() throws Exception {
+        ElementAttributes attr = new ElementAttributes()
+                .set(SVGSettings.LATEX, true)
+                .set(SVGSettings.PINS_IN_MATH_MODE, true);
+
         ByteArrayOutputStream baos
                 = export("dig/export/labels.dig",
                 (out) -> new GraphicSVG(out, attr));
@@ -38,7 +51,7 @@ public class SVGExportTest extends TestCase {
         assertTrue(actual.contains("$Y_n$"));
     }
 
-    public void testSVGExportLabel2() throws NodeException, PinException, IOException, ElementNotFoundException {
+    public void testSVGExportShapePins() throws Exception {
         ElementAttributes attr = new ElementAttributes()
                 .set(SVGSettings.LATEX, true)
                 .set(SVGSettings.PINS_IN_MATH_MODE, false);
@@ -47,11 +60,11 @@ public class SVGExportTest extends TestCase {
                 (out) -> new GraphicSVG(out, attr));
 
         String actual = new String(baos.toByteArray(), StandardCharsets.UTF_8);
-        assertFalse(actual.contains("$A$"));
+        assertTrue(actual.contains("{\\scriptsize A}"));
         assertTrue(actual.contains("$Y_n$"));
     }
 
-    public void testSVGExportLabel3() throws NodeException, PinException, IOException, ElementNotFoundException {
+    public void testSVGExportShapePinsMath() throws Exception {
         ElementAttributes attr = new ElementAttributes()
                 .set(SVGSettings.LATEX, true)
                 .set(SVGSettings.PINS_IN_MATH_MODE, true);
@@ -60,7 +73,7 @@ public class SVGExportTest extends TestCase {
                 (out) -> new GraphicSVG(out, attr));
 
         String actual = new String(baos.toByteArray(), StandardCharsets.UTF_8);
-        assertTrue(actual.contains("$A$"));
+        assertTrue(actual.contains("{\\scriptsize $A$}"));
         assertTrue(actual.contains("$Y_n$"));
     }
 

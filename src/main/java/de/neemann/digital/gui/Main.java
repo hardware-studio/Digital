@@ -5,17 +5,17 @@
  */
 package de.neemann.digital.gui;
 
+import de.neemann.digital.FileLocator;
 import de.neemann.digital.analyse.AnalyseException;
 import de.neemann.digital.analyse.ModelAnalyser;
 import de.neemann.digital.analyse.SubstituteLibrary;
 import de.neemann.digital.analyse.TruthTable;
-import de.neemann.digital.analyse.expression.format.FormatToExpression;
 import de.neemann.digital.core.*;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.io.Button;
 import de.neemann.digital.core.io.*;
-import de.neemann.digital.core.memory.Register;
+import de.neemann.digital.core.memory.ProgramCounter;
 import de.neemann.digital.core.stats.Statistics;
 import de.neemann.digital.core.wiring.AsyncSeq;
 import de.neemann.digital.core.wiring.Clock;
@@ -43,18 +43,17 @@ import de.neemann.digital.gui.components.testing.TestAllDialog;
 import de.neemann.digital.gui.components.testing.ValueTableDialog;
 import de.neemann.digital.gui.components.tree.LibraryTreeModel;
 import de.neemann.digital.gui.components.tree.SelectTree;
-import de.neemann.digital.gui.tutorial.InitialTutorial;
 import de.neemann.digital.gui.release.CheckForNewRelease;
 import de.neemann.digital.gui.remote.DigitalHandler;
 import de.neemann.digital.gui.remote.RemoteException;
 import de.neemann.digital.gui.remote.RemoteSever;
 import de.neemann.digital.gui.state.State;
 import de.neemann.digital.gui.state.StateManager;
+import de.neemann.digital.gui.tutorial.InitialTutorial;
 import de.neemann.digital.hdl.printer.CodePrinter;
 import de.neemann.digital.hdl.verilog2.VerilogGenerator;
 import de.neemann.digital.hdl.vhdl2.VHDLGenerator;
 import de.neemann.digital.lang.Lang;
-import de.neemann.digital.testing.TestCaseElement;
 import de.neemann.digital.testing.TestingDataException;
 import de.neemann.digital.toolchain.Configuration;
 import de.neemann.digital.undo.ChangedListener;
@@ -64,6 +63,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.text.DefaultEditorKit;
 import java.awt.*;
@@ -91,7 +92,7 @@ import static javax.swing.JOptionPane.showInputDialog;
  * The main frame of the Digital Simulator
  * Set log level: -Dorg.slf4j.simpleLogger.defaultLogLevel=debug
  */
-public final class Main extends JFrame implements ClosingWindowListener.ConfirmSave, ErrorStopper, FileHistory.OpenInterface, DigitalRemoteInterface, StatusInterface, ChangedListener {
+public final class Main extends JFrame implements ClosingWindowListener.ConfirmSave, FileHistory.OpenInterface, DigitalRemoteInterface, StatusInterface, ChangedListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
     private static final String KEY_START_STOP_ACTION = "startStop";
     private static boolean experimental;
@@ -133,6 +134,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
     private final WindowPosManager windowPosManager;
     private final InsertHistory insertHistory;
     private final boolean keepPrefMainFile;
+    private final FileHistory fileHistory;
 
     private ToolTipAction doMicroStep;
     private ToolTipAction runToBreakMicroAction;
@@ -143,7 +145,6 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
 
     private File baseFilename;
     private File filename;
-    private FileHistory fileHistory;
     private boolean modifiedPrefixVisible = false;
 
     private Model model;
@@ -273,7 +274,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 library.removeListener(circuitComponent);
                 if (treeModel != null)
                     library.removeListener(treeModel);
-                windowPosManager.closeAll();
+                windowPosManager.shutdown();
             }
         });
 
@@ -332,9 +333,10 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 if (model != null && !realTimeClockRunning) {
                     ArrayList<Clock> cl = model.getClocks();
                     if (cl.size() == 1) {
-                        ObservableValue clkVal = cl.get(0).getClockOutput();
-                        clkVal.setBool(!clkVal.getBool());
-                        circuitComponent.modelHasChanged();
+                        model.modify(() -> {
+                            ObservableValue clkVal = cl.get(0).getClockOutput();
+                            clkVal.setBool(!clkVal.getBool());
+                        });
                     }
                 }
             }
@@ -391,13 +393,13 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             if (treeCheckBox.isSelected()) {
                 JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
                 treeModel = new LibraryTreeModel(library);
-                split.setLeftComponent(new JScrollPane(new SelectTree(treeModel, circuitComponent, shapeFactory, insertHistory)));
+                split.setLeftComponent(createTreeComponent());
                 split.setRightComponent(circuitScrollPanel);
                 getContentPane().add(split);
                 componentOnPane = split;
             } else {
                 if (treeModel != null) {
-                    library.removeListener(treeModel);
+                    treeModel.close();
                     treeModel = null;
                 }
                 getContentPane().add(circuitScrollPanel);
@@ -425,17 +427,71 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         toolBar.add(zoomOut.createJButtonNoText());
         toolBar.add(maximize.createJButtonNoText());
 
+        JMenu scaleMenu = new JMenu(Lang.get("menu_scale"));
+        for (int i = 0; i < 10; i++) {
+            int f = (20 + i * 20);
+            scaleMenu.add(new JMenuItem(new AbstractAction(f + "%") {
+                @Override
+                public void actionPerformed(ActionEvent actionEvent) {
+                    getCircuitComponent().setScale(f / 100.0f);
+                }
+            }));
+        }
+
         JMenu view = new JMenu(Lang.get("menu_view"));
         menuBar.add(view);
         view.add(maximize.createJMenuItem());
         view.add(zoomOut.createJMenuItem());
         view.add(zoomIn.createJMenuItem());
+        view.add(scaleMenu);
         view.addSeparator();
         view.add(treeCheckBox);
         view.addSeparator();
         view.add(tutorial.createJMenuItem());
         view.addSeparator();
         view.add(viewHelp.createJMenuItem());
+    }
+
+    private JComponent createTreeComponent() {
+        JPanel panel = new JPanel(new BorderLayout());
+        JPanel field = new JPanel(new BorderLayout());
+        JTextField textField = new SearchTextField();
+        field.add(textField);
+        JButton clearButton = new JButton(new AbstractAction("\u2717") {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+                textField.setText("");
+            }
+        });
+        clearButton.setBorder(BorderFactory.createEmptyBorder(2, 5, 2, 5));
+        field.add(clearButton, BorderLayout.EAST);
+        panel.add(field, BorderLayout.NORTH);
+
+        textField.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        SelectTree tree = new SelectTree(treeModel, circuitComponent, shapeFactory, insertHistory);
+        textField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent documentEvent) {
+                changedUpdate(documentEvent);
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent documentEvent) {
+                changedUpdate(documentEvent);
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent documentEvent) {
+                String text = textField.getText().trim();
+                if (text.isEmpty())
+                    treeModel = new LibraryTreeModel(library);
+                else
+                    treeModel = new LibraryTreeModel(library, new TextSearchFilter(text));
+                tree.setModel(treeModel);
+            }
+        });
+        panel.add(new JScrollPane(tree));
+        return panel;
     }
 
     private void clearPane() {
@@ -606,7 +662,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 try {
                     new ModelCreator(circuitComponent.getCircuit(), library).createModel(false).close();
                 } catch (PinException | NodeException | ElementNotFoundException | RuntimeException e) {
-                    showErrorWithoutARunningModel(Lang.get("msg_modelHasErrors"), e);
+                    showError(Lang.get("msg_modelHasErrors"), e);
                     return;
                 }
 
@@ -641,7 +697,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 try {
                     new ModelCreator(circuitComponent.getCircuit(), library).createModel(false);
                 } catch (PinException | NodeException | ElementNotFoundException e) {
-                    showErrorWithoutARunningModel(Lang.get("msg_modelHasErrors"), e);
+                    showError(Lang.get("msg_modelHasErrors"), e);
                     return;
                 }
 
@@ -680,6 +736,13 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
      */
     public CircuitComponent getCircuitComponent() {
         return circuitComponent;
+    }
+
+    /**
+     * @return the used library
+     */
+    public ElementLibrary getLibrary() {
+        return library;
     }
 
     /**
@@ -738,13 +801,13 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                                 .setDialogTitle(Lang.get("menu_editSettings"))
                                 .showDialog();
                 if (modified != null) {
-                    FormatToExpression.setDefaultFormat(modified.get(Keys.SETTINGS_EXPRESSION_FORMAT));
+                    ColorScheme.updateCustomColorScheme(modified);
 
                     if (Settings.getInstance().requiresRestart(modified)) {
                         Lang.setLanguage(modified.get(Keys.SETTINGS_LANGUAGE));
                         JOptionPane.showMessageDialog(Main.this, Lang.get("msg_restartNeeded"));
                     }
-                    if (!Settings.getInstance().getAttributes().equalsKey(Keys.SETTINGS_GRID, modified))
+                    if (Settings.getInstance().requiresRepaint(modified))
                         circuitComponent.graphicHasChanged();
 
                     Settings.getInstance().getAttributes().getValuesFrom(modified);
@@ -756,7 +819,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         ToolTipAction actualToDefault = new ToolTipAction(Lang.get("menu_actualToDefault")) {
             @Override
             public void actionPerformed(ActionEvent e) {
-                circuitComponent.actualToDefault();
+                circuitComponent.currentToDefault();
                 ensureModelIsStopped();
             }
         }.setToolTip(Lang.get("menu_actualToDefault_tt"));
@@ -975,29 +1038,13 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         doMicroStep = new ToolTipAction(Lang.get("menu_step"), ICON_STEP) {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    model.doMicroStep(false);
-                    circuitComponent.removeHighLighted();
-                    modelCreator.addNodeElementsTo(model.nodesToUpdate(), circuitComponent.getHighLighted());
-                    circuitComponent.graphicHasChanged();
-                    checkMicroStepActions(model);
-                } catch (Exception e1) {
-                    showErrorAndStopModel(Lang.get("msg_errorCalculatingStep"), e1);
-                }
+                model.doMicroStep(false);
             }
         }.setToolTip(Lang.get("menu_step_tt")).setAccelerator("V").setEnabledChain(false);
         runToBreakMicroAction = new ToolTipAction(Lang.get("menu_runToBreakMicro"), ICON_STEP_FINISH) {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    model.runToBreakMicro();
-                    circuitComponent.removeHighLighted();
-                    modelCreator.addNodeElementsTo(model.nodesToUpdate(), circuitComponent.getHighLighted());
-                    circuitComponent.graphicHasChanged();
-                    checkMicroStepActions(model);
-                } catch (Exception e1) {
-                    showErrorAndStopModel(Lang.get("msg_errorCalculatingStep"), e1);
-                }
+                model.runToBreakMicro();
             }
         }.setToolTip(Lang.get("menu_runToBreakMicro_tt")).setAccelerator("B").setEnabledChain(false);
 
@@ -1008,13 +1055,9 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         runToBreakAction = new ToolTipAction(Lang.get("menu_fast"), ICON_FAST) {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    Model.BreakInfo info = model.runToBreak();
-                    circuitComponent.graphicHasChanged();
+                Model.BreakInfo info = model.runToBreak();
+                if (info != null)
                     statusLabel.setText(Lang.get("stat_clocks", info.getSteps(), info.getLabel()));
-                } catch (NodeException | RuntimeException e1) {
-                    showErrorAndStopModel(Lang.get("msg_fastRunError"), e1);
-                }
             }
         }.setToolTip(Lang.get("menu_fast_tt")).setEnabledChain(false).setAccelerator("F7");
 
@@ -1039,7 +1082,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         }.setToolTip(Lang.get("menu_runAllTests_tt")).setAccelerator("F11");
 
         ToolTipAction speedTest = new ToolTipAction(Lang.get("menu_speedTest")) {
-            private NumberFormat format = new DecimalFormat("0.0");
+            private final NumberFormat format = new DecimalFormat("0.0");
 
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -1058,7 +1101,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                         model.close();
                     }
                 } catch (Exception e1) {
-                    showErrorWithoutARunningModel(Lang.get("msg_speedTestError"), e1);
+                    showError(Lang.get("msg_speedTestError"), e1);
                 }
             }
         }.setToolTip(Lang.get("menu_speedTest_tt"));
@@ -1067,9 +1110,9 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
                 if (model != null) {
-                    ModelEvent event = ModelEvent.STEP;
+                    ModelEventType event = ModelEventType.STEP;
                     if (stateManager.isActive(runModelMicroState))
-                        event = ModelEvent.MICROSTEP;
+                        event = ModelEventType.MICROSTEP;
                     showMeasurementDialog(event);
                 }
             }
@@ -1079,9 +1122,9 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
                 if (model != null) {
-                    ModelEvent event = ModelEvent.STEP;
+                    ModelEventType event = ModelEventType.STEP;
                     if (stateManager.isActive(runModelMicroState))
-                        event = ModelEvent.MICROSTEP;
+                        event = ModelEventType.MICROSTEP;
                     showMeasurementGraph(event);
                 }
             }
@@ -1146,12 +1189,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
      */
     public void startTests() {
         try {
-            ArrayList<ValueTableDialog.TestSet> tsl = new ArrayList<>();
-            for (VisualElement el : circuitComponent.getCircuit().getElements())
-                if (el.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION))
-                    tsl.add(new ValueTableDialog.TestSet(
-                            el.getElementAttributes().get(TestCaseElement.TESTDATA),
-                            el.getElementAttributes().getLabel()));
+            List<Circuit.TestCase> tsl = circuitComponent.getCircuit().getTestCases();
 
             if (tsl.isEmpty())
                 throw new TestingDataException(Lang.get("err_noTestData"));
@@ -1161,8 +1199,8 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                     .setVisible(true);
 
             ensureModelIsStopped();
-        } catch (NodeException | ElementNotFoundException | PinException | TestingDataException | RuntimeException e1) {
-            showErrorWithoutARunningModel(Lang.get("msg_runningTestError"), e1);
+        } catch (TestingDataException | RuntimeException e1) {
+            showError(Lang.get("msg_runningTestError"), e1);
         }
     }
 
@@ -1191,7 +1229,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                         model.close();
                     }
                 } catch (PinException | NodeException | AnalyseException | ElementNotFoundException | BacktrackException | RuntimeException e1) {
-                    showErrorWithoutARunningModel(Lang.get("msg_analyseErr"), e1);
+                    showError(Lang.get("msg_analyseErr"), e1);
                 }
             }
         }
@@ -1261,7 +1299,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 m.close();
             }
         } catch (NodeException | PinException | ElementNotFoundException | RuntimeException e) {
-            showErrorWithoutARunningModel(Lang.get("msg_errorCreatingModel"), e);
+            showError(Lang.get("msg_errorCreatingModel"), e);
         }
     }
 
@@ -1294,8 +1332,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 showMeasurementGraph.setEnabled(true);
                 stoppedState.getAction().setEnabled(true);
                 runTests.setEnabled(false);
-                if (createAndStartModel(false, ModelEvent.MICROSTEP, null))
-                    circuitComponent.setManualChangeObserver(new MicroStepObserver(model));
+                createAndStartModel(false, ModelEventType.MICROSTEP, null);
             }
         });
         stateManager.setActualState(stoppedState);
@@ -1332,20 +1369,19 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             showMeasurementDialog.setEnabled(true);
             showMeasurementGraph.setEnabled(true);
             runTests.setEnabled(false);
-            if (createAndStartModel(runRealTime, ModelEvent.STEP, modelModifier))
-                circuitComponent.setManualChangeObserver(new FullStepObserver(model));
+            createAndStartModel(runRealTime, ModelEventType.STEP, modelModifier);
         }
     }
 
     private void clearModelDescription() {
         if (model != null)
-            model.access(() -> model.close());
+            model.modify(() -> model.close());
 
         modelCreator = null;
         model = null;
     }
 
-    private boolean createAndStartModel(boolean globalRunClock, ModelEvent updateEvent, ModelModifier modelModifier) {
+    private void createAndStartModel(boolean globalRunClock, ModelEventType updateEvent, ModelModifier modelModifier) {
         try {
             circuitComponent.removeHighLighted();
 
@@ -1354,7 +1390,11 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             modelCreator = new ModelCreator(circuitComponent.getCircuit(), library);
 
             if (model != null) {
-                model.access(() -> model.close());
+                model.modify(() -> {
+                    ModelClosedObserver mco = model.getObserver(ModelClosedObserver.class);
+                    if (mco != null) mco.setClosedByRestart(true);
+                    model.close();
+                });
                 circuitComponent.getCircuit().clearState();
                 model = null;
             }
@@ -1362,26 +1402,31 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             model = modelCreator.createModel(true);
 
             time = System.currentTimeMillis() - time;
-            LOGGER.debug("model creation: " + time + " ms");
+            LOGGER.debug("model creation: " + time + " ms, " + model.getNodes().size() + " nodes");
 
             model.setWindowPosManager(windowPosManager);
 
             statusLabel.setText(Lang.get("msg_N_nodes", model.size()));
 
+            int maxFrequency = 0;
             realTimeClockRunning = false;
             if (globalRunClock) {
                 int threadRunnerCount = 0;
-                for (Clock c : model.getClocks())
-                    if (c.getFrequency() > 0) {
-                        final RealTimeClock realTimeClock = new RealTimeClock(model, c, timerExecutor, this, this);
+                for (Clock c : model.getClocks()) {
+                    int frequency = c.getFrequency();
+                    if (frequency > 0) {
+                        final RealTimeClock realTimeClock = new RealTimeClock(model, c, timerExecutor, this);
                         model.addObserver(realTimeClock);
                         if (realTimeClock.isThreadRunner()) threadRunnerCount++;
                         realTimeClockRunning = true;
                     }
+                    if (frequency > maxFrequency)
+                        maxFrequency = frequency;
+                }
                 if (threadRunnerCount > 1)
                     throw new RuntimeException(Lang.get("err_moreThanOneFastClock"));
             }
-            if (!realTimeClockRunning && updateEvent == ModelEvent.MICROSTEP) {
+            if (!realTimeClockRunning && updateEvent == ModelEventType.MICROSTEP) {
                 // no real clock
                 AsyncSeq ai = model.getAsyncInfos();
                 if (ai != null) {
@@ -1389,7 +1434,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                         if (!model.getClocks().isEmpty())
                             throw new RuntimeException(Lang.get("err_clocksNotAllowedInAsyncMode"));
                         model.addObserver(
-                                new AsyncSequentialClock(model, ai, timerExecutor, this));
+                                new AsyncSequentialClock(model, ai, timerExecutor));
                         realTimeClockRunning = true;
                     }
                     model.setAsyncMode();
@@ -1397,21 +1442,20 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             }
 
             circuitComponent.setModeAndReset(true, model);
+            if (circuitComponent.getCircuit().getAttributes().get(Keys.IS_GENERIC))
+                circuitComponent.setCopy(modelCreator.getCircuit());
 
-            if (realTimeClockRunning) {
-                // if clock is running, enable automatic update of gui
-                GuiModelObserver gmo = new GuiModelObserver(circuitComponent, updateEvent);
-                modelCreator.connectToGui(gmo);
-                model.addObserver(gmo);
-            } else
-                // all repainting is initiated by user actions!
-                modelCreator.connectToGui(null);
+            // Allows the model to modify the circuit
+            CircuitModifierPostClosed cmpc = new CircuitModifierPostClosed(
+                    modification -> SwingUtilities.invokeLater(() -> circuitComponent.modify(modification)));
+            modelCreator.connectToGui(cmpc);
+            model.addObserver(cmpc);
 
-            handleKeyboardComponent(updateEvent);
+            handleKeyboardComponents();
 
             doMicroStep.setEnabled(false);
             if (!realTimeClockRunning && model.isRunToBreakAllowed()) {
-                if (updateEvent == ModelEvent.MICROSTEP)
+                if (updateEvent == ModelEventType.MICROSTEP)
                     runToBreakMicroAction.setEnabled(true);
                 else
                     runToBreakAction.setEnabled(true);
@@ -1424,28 +1468,39 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             if (settings.get(Keys.SHOW_DATA_GRAPH) || windowPosManager.isVisible("dataSet"))
                 showMeasurementGraph(updateEvent);
             if (settings.get(Keys.SHOW_DATA_GRAPH_MICRO))
-                showMeasurementGraph(ModelEvent.MICROSTEP);
+                showMeasurementGraph(ModelEventType.MICROSTEP);
 
             if (modelModifier != null)
                 modelModifier.preInit(model);
             else {
-                if (settings.get(Keys.PRELOAD_PROGRAM))
-                    new ProgramMemoryLoader(settings.get(Keys.PROGRAM_TO_PRELOAD)).preInit(model);
+                if (settings.get(Keys.PRELOAD_PROGRAM)) {
+                    File romHex = new FileLocator(settings.get(Keys.PROGRAM_TO_PRELOAD))
+                            .setupWithMain(this)
+                            .locate();
+                    new ProgramMemoryLoader(romHex)
+                            .preInit(model);
+                }
             }
+
+            if (updateEvent == ModelEventType.MICROSTEP) {
+                checkMicroStepActions(model);
+                model.addObserver(new MicroStepObserver(model, modelCreator));
+            } else if (updateEvent == ModelEventType.STEP) {
+                if (maxFrequency <= 50)
+                    model.addObserver(new FullStepObserver(model));
+                else
+                    model.addObserver(new FastObserver());
+            }
+
+            model.addObserver(new ModelClosedObserver());
 
             model.init();
 
-            if (updateEvent == ModelEvent.MICROSTEP)
-                checkMicroStepActions(model);
-
-            return true;
         } catch (NodeException | PinException | RuntimeException | ElementNotFoundException e) {
-            if (model != null) {
-                showErrorAndStopModel(Lang.get("msg_errorCreatingModel"), e);
-            } else
-                showErrorWithoutARunningModel(Lang.get("msg_errorCreatingModel"), e);
+            if (model != null)
+                model.close();
+            showError(Lang.get("msg_errorCreatingModel"), e);
         }
-        return false;
     }
 
     private void checkMicroStepActions(Model model) {
@@ -1455,45 +1510,19 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             runToBreakMicroAction.setEnabled(needsUpdate);
     }
 
-    private void handleKeyboardComponent(ModelEvent updateEvent) {
-        KeyboardDialog.KeyPressedHandler handler = null;
-        for (Keyboard k : model.findNode(Keyboard.class)) {
-            if (handler == null)
-                if (updateEvent == ModelEvent.MICROSTEP)
-                    handler = keyboard -> {
-                        keyboard.hasChanged();
-                        modelCreator.addNodeElementsTo(model.nodesToUpdate(), circuitComponent.getHighLighted());
-                        model.fireManualChangeEvent();
-                        checkMicroStepActions(model);
-                        circuitComponent.graphicHasChanged();
-                    };
-                else
-                    handler = keyboard -> {
-                        try {
-                            model.accessNEx(() -> {
-                                keyboard.hasChanged();
-                                model.fireManualChangeEvent();
-                                model.doStep();
-                            });
-                            circuitComponent.graphicHasChanged();
-                        } catch (NodeException | RuntimeException e) {
-                            showErrorAndStopModel(Lang.get("msg_errorCalculatingStep"), e);
-                        }
-                    };
-
-
-            windowPosManager.register("keyboard_" + k.getLabel(), new KeyboardDialog(this, k, handler));
-        }
+    private void handleKeyboardComponents() {
+        for (Keyboard k : model.findNode(Keyboard.class))
+            windowPosManager.register("keyboard_" + k.getLabel(), new KeyboardDialog(this, k, model));
     }
 
-    private void showMeasurementGraph(ModelEvent updateEvent) {
+    private void showMeasurementGraph(ModelEventType updateEvent) {
         List<String> ordering = circuitComponent.getCircuit().getMeasurementOrdering();
-        windowPosManager.register("dataSet", GraphDialog.createLiveDialog(this, model, updateEvent == ModelEvent.MICROSTEP, ordering)).setVisible(true);
+        windowPosManager.register("dataSet", GraphDialog.createLiveDialog(this, model, updateEvent == ModelEventType.MICROSTEP, ordering)).setVisible(true);
     }
 
-    private void showMeasurementDialog(ModelEvent updateEvent) {
+    private void showMeasurementDialog(ModelEventType updateEvent) {
         List<String> ordering = circuitComponent.getCircuit().getMeasurementOrdering();
-        windowPosManager.register("probe", new ProbeDialog(this, model, updateEvent, ordering, circuitComponent)).setVisible(true);
+        windowPosManager.register("probe", new ProbeDialog(this, model, updateEvent, ordering)).setVisible(true);
     }
 
     /**
@@ -1503,23 +1532,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         return model;
     }
 
-    private final Object modelLock = new Object();
-
-    @Override
-    public void showErrorAndStopModel(String message, Exception cause) {
-        // If an error is detected by the gui thread by clicking a button o.e. the real time
-        // thread could also detect that error later and maybe also calls this function.
-        // To avoid such problems a lock is used.
-        synchronized (modelLock) {
-            if (model != null) {
-                model.access(() -> model.close());
-                model = null;
-                SwingUtilities.invokeLater(() -> showErrorWithoutARunningModel(message, cause));
-            }
-        }
-    }
-
-    private void showErrorWithoutARunningModel(String message, Exception cause) {
+    private void showError(String message, Exception cause) {
         if (cause instanceof NodeException) {
             NodeException e = (NodeException) cause;
             circuitComponent.addHighLightedWires(e.getValues());
@@ -1643,6 +1656,26 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         }
     }
 
+    /**
+     * Starts the simulation and allows to advance the model to a certain state.
+     *
+     * @param advanceSimulator needs to be implemented to advance the model
+     */
+    public void startSimulation(AdvanceSimulator advanceSimulator) {
+        SwingUtilities.invokeLater(() -> {
+            runModelState.enter(false, null);
+            SwingUtilities.invokeLater(() -> {
+                if (model != null && model.isRunning()) {
+                    try {
+                        advanceSimulator.advance(model);
+                        circuitComponent.graphicHasChanged();
+                    } catch (Exception e) {
+                        showError(Lang.get("msg_errorSettingModelToTestCase"), e);
+                    }
+                }
+            });
+        });
+    }
 
     @Override
     public void hasChanged() {
@@ -1663,7 +1696,40 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         SwingUtilities.invokeLater(() -> statusLabel.setText(message));
     }
 
-    private class FullStepObserver implements Observer {
+    /**
+     * Used to update the gui if the model is closed
+     */
+    private class ModelClosedObserver implements ModelStateObserverTyped {
+
+        private boolean closedByRestart = false;
+
+        @Override
+        public void handleEvent(ModelEvent event) {
+            switch (event.getType()) {
+                case ERROR_OCCURRED:
+                    SwingUtilities.invokeLater(() -> showError(Lang.get("msg_errorCalculatingStep"), event.getCause()));
+                    break;
+                case CLOSED:
+                    if (!closedByRestart)
+                        SwingUtilities.invokeLater(Main.this::ensureModelIsStopped);
+                    break;
+            }
+        }
+
+        @Override
+        public ModelEventType[] getEvents() {
+            return new ModelEventType[]{ModelEventType.CLOSED, ModelEventType.ERROR_OCCURRED};
+        }
+
+        public void setClosedByRestart(boolean closedByRestart) {
+            this.closedByRestart = closedByRestart;
+        }
+    }
+
+    /**
+     * Updates the graphic at every modification.
+     */
+    private class FullStepObserver implements ModelStateObserverTyped {
         private final Model model;
 
         FullStepObserver(Model model) {
@@ -1671,34 +1737,86 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         }
 
         @Override
-        public void hasChanged() {
-            try {
-                model.accessNEx(() -> {
-                    model.fireManualChangeEvent();
+        public void handleEvent(ModelEvent event) {
+            switch (event.getType()) {
+                case EXTERNALCHANGE:
                     model.doStep();
-                });
-                circuitComponent.graphicHasChanged();
-            } catch (NodeException | RuntimeException e) {
-                showErrorAndStopModel(Lang.get("msg_errorCalculatingStep"), e);
+                    circuitComponent.graphicHasChanged();
+                    break;
+                case BREAK:
+                    circuitComponent.graphicHasChanged();
+                    break;
             }
-        }
-    }
-
-    private class MicroStepObserver implements Observer {
-        private final Model model;
-
-        MicroStepObserver(Model model) {
-            this.model = model;
         }
 
         @Override
-        public void hasChanged() {
-            if (!realTimeClockRunning)
-                modelCreator.addNodeElementsTo(model.nodesToUpdate(), circuitComponent.getHighLighted());
-            model.fireManualChangeEvent();
-            circuitComponent.graphicHasChanged();
-            if (!realTimeClockRunning)
-                checkMicroStepActions(model);
+        public ModelEventType[] getEvents() {
+            return new ModelEventType[]{ModelEventType.EXTERNALCHANGE, ModelEventType.BREAK};
+        }
+    }
+
+    /**
+     * Updates the graphic at every 100ms
+     */
+    private final class FastObserver implements ModelStateObserverTyped {
+        private final Timer timer;
+
+        private FastObserver() {
+            timer = new Timer(100, actionEvent -> circuitComponent.graphicHasChanged());
+        }
+
+        @Override
+        public void handleEvent(ModelEvent event) {
+            switch (event.getType()) {
+                case STARTED:
+                    timer.start();
+                    break;
+                case CLOSED:
+                case BREAK:
+                    timer.stop();
+                    SwingUtilities.invokeLater(circuitComponent::graphicHasChanged);
+                    break;
+            }
+        }
+
+        @Override
+        public ModelEventType[] getEvents() {
+            return new ModelEventType[]{ModelEventType.CLOSED, ModelEventType.BREAK};
+        }
+    }
+
+    /**
+     * Updates the graphic at every micro step
+     */
+    private final class MicroStepObserver implements ModelStateObserverTyped {
+        private final Model model;
+        private final ModelCreator modelCreator;
+
+        private MicroStepObserver(Model model, ModelCreator modelCreator) {
+            this.model = model;
+            this.modelCreator = modelCreator;
+        }
+
+        @Override
+        public void handleEvent(ModelEvent event) {
+            switch (event.getType()) {
+                case EXTERNALCHANGE:
+                case MICROSTEP:
+                case BREAK:
+                    if (!realTimeClockRunning) {
+                        circuitComponent.removeHighLighted();
+                        modelCreator.addNodeElementsTo(model.nodesToUpdate(), circuitComponent.getHighLighted());
+                    }
+                    circuitComponent.graphicHasChanged();
+                    if (!realTimeClockRunning)
+                        checkMicroStepActions(model);
+                    break;
+            }
+        }
+
+        @Override
+        public ModelEventType[] getEvents() {
+            return new ModelEventType[]{ModelEventType.EXTERNALCHANGE, ModelEventType.MICROSTEP, ModelEventType.BREAK};
         }
     }
 
@@ -1777,9 +1895,9 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         private long address;
 
         private void getProgramROMAddress(Model model) {
-            List<Register> roms = model.findNode(Register.class, Register::isProgramCounter);
-            if (roms.size() == 1)
-                address = roms.get(0).getValue();
+            List<Node> programCounters = model.findNode(n -> n instanceof ProgramCounter && ((ProgramCounter) n).isProgramCounter());
+            if (programCounters.size() == 1)
+                address = ((ProgramCounter) programCounters.get(0)).getProgramCounter();
             else
                 address = -1;
         }
@@ -1795,7 +1913,10 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
     @Override
     public void start(File romHex) {
         SwingUtilities.invokeLater(() -> {
-            runModelState.enter(true, new ProgramMemoryLoader(romHex));
+            ProgramMemoryLoader modelModifier = null;
+            if (romHex != null)
+                modelModifier = new ProgramMemoryLoader(romHex);
+            runModelState.enter(true, modelModifier);
             circuitComponent.graphicHasChanged();
         });
     }
@@ -1806,7 +1927,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             runModelState.enter(false, new ProgramMemoryLoader(romHex));
             circuitComponent.graphicHasChanged();
             if (model != null)
-                showMeasurementDialog(ModelEvent.STEP);
+                showMeasurementDialog(ModelEventType.STEP);
         });
     }
 
@@ -1819,17 +1940,14 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                     ArrayList<Clock> cl = model.getClocks();
                     if (cl.size() == 1) {
                         ObservableValue clkVal = cl.get(0).getClockOutput();
-                        clkVal.setBool(!clkVal.getBool());
-                        try {
-                            model.doStep();
-                            if (clkVal.getBool()) {
-                                clkVal.setBool(!clkVal.getBool());
+                        model.modify(() -> clkVal.setBool(!clkVal.getBool()));
+                        model.doStep();
+                        if (model != null) {
+                            if (clkVal.getBool() && model.isRunning()) {
+                                model.modify(() -> clkVal.setBool(!clkVal.getBool()));
                                 model.doStep();
                             }
-                            circuitComponent.graphicHasChanged();
                             addressPicker.getProgramROMAddress(model);
-                        } catch (NodeException | RuntimeException e) {
-                            showErrorAndStopModel(Lang.get("err_remoteExecution"), e);
                         }
                     }
                 });
@@ -1859,11 +1977,27 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
 
     @Override
     public void stop() {
-        SwingUtilities.invokeLater(() -> {
-            ensureModelIsStopped();
-            circuitComponent.graphicHasChanged();
-        });
+        SwingUtilities.invokeLater(this::ensureModelIsStopped);
     }
+
+    @Override
+    public String measure() throws RemoteException {
+        if (model == null)
+            throw new RemoteException("no model available");
+
+        StringBuilder sb = new StringBuilder("{");
+        model.read(() -> {
+            boolean first = true;
+            for (Signal s : model.getSignals()) {
+                if (first) first = false;
+                else sb.append(',');
+                sb.append('"').append(s.getName()).append("\":").append(s.getValue().getValue());
+            }
+        });
+        sb.append("}");
+        return sb.toString();
+    }
+
     //**********************
     // remote interface end
     //**********************
@@ -1889,7 +2023,6 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         }
         ToolTipManager.sharedInstance().setDismissDelay(10000);
         URL.setURLStreamHandlerFactory(ElementHelpDialog.createURLStreamHandlerFactory());
-        FormatToExpression.setDefaultFormat(Settings.getInstance().get(Keys.SETTINGS_EXPRESSION_FORMAT));
 
         if (Screen.isMac()) {
             setMacCopyPasteTo(UIManager.get("TextField.focusInputMap"));
@@ -2061,10 +2194,22 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             if (model != null && keyCode != KeyEvent.VK_UNDEFINED) {
                 Button b = model.getButtonToMap(keyCode);
                 if (b != null) {
-                    model.access(() -> b.setPressed(pressed));
-                    circuitComponent.modelHasChanged();
+                    model.modify(() -> b.setPressed(pressed));
                 }
             }
         }
+    }
+
+    /**
+     * Allows to start the simulation and advance the model to a certain state.
+     */
+    public interface AdvanceSimulator {
+        /**
+         * Advances the model to a certain state
+         *
+         * @param model the model
+         * @throws Exception Exception
+         */
+        void advance(Model model) throws Exception;
     }
 }

@@ -33,35 +33,32 @@ public class KarnaughMapComponent extends JComponent {
             new Color(200, 200, 0, 128), new Color(0, 255, 255, 128)};
     private KarnaughMap kv;
     private BoolTable boolTable;
+    private Expression exp;
     private ArrayList<Variable> vars;
     private Graphics2D gr;
     private String message = Lang.get("msg_noKVMapAvailable");
+    private final MapLayout mapLayout = new MapLayout(0);
+    private final VarRectList varRectList = new VarRectList();
 
     private int xOffs;
     private int yOffs;
     private int cellSize;
+    private int xDrag;
+    private int yDrag;
+    private VarRectList.VarRect startVarRect = null;
 
     /**
      * Creates a new instance
      *
-     * @param modifier the modifier which is used to modify the truth table.
+     * @param tableCellModifier the modifier which is used to modify the truth table.
      */
-    public KarnaughMapComponent(Modifier modifier) {
+    public KarnaughMapComponent(Modifier tableCellModifier) {
         setPreferredSize(Screen.getInstance().scale(new Dimension(400, 400)));
-        if (modifier != null)
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent mouseEvent) {
-                    if (kv != null) {
-                        int x = (mouseEvent.getX() - xOffs) / cellSize - 1;
-                        int y = (mouseEvent.getY() - yOffs) / cellSize - 1;
-                        if (x >= 0 && x < kv.getColumns() && y >= 0 && y < kv.getRows()) {
-                            int row = kv.getCell(y, x).getBoolTableRow();
-                            modifier.modify(boolTable, row);
-                        }
-                    }
-                }
-            });
+        if (tableCellModifier != null) {
+            MyMouseAdapter ma = new MyMouseAdapter(tableCellModifier);
+            addMouseListener(ma);
+            addMouseMotionListener(ma);
+        }
     }
 
     /**
@@ -73,9 +70,15 @@ public class KarnaughMapComponent extends JComponent {
      */
     public void setResult(ArrayList<Variable> vars, BoolTable boolTable, Expression exp) {
         this.vars = vars;
+        mapLayout.checkSize(vars.size());
         this.boolTable = boolTable;
+        this.exp = exp;
+        update();
+    }
+
+    private void update() {
         try {
-            kv = new KarnaughMap(vars, exp);
+            kv = new KarnaughMap(vars, exp, mapLayout);
         } catch (KarnaughException e) {
             kv = null;
             message = e.getMessage();
@@ -117,7 +120,6 @@ public class KarnaughMapComponent extends JComponent {
 
             Font headerFont = valuesFont;
             int maxHeaderStrWidth = 0;
-            FontMetrics fontMetrics = gr.getFontMetrics();
             for (int i = 0; i < vars.size(); i++) {
                 final GraphicsFormatter.Fragment fr = getFragment(i, true);
                 if (fr != null) {
@@ -134,7 +136,7 @@ public class KarnaughMapComponent extends JComponent {
 
             // draw table
             gr.setColor(Color.GRAY);
-            gr.setStroke(new BasicStroke(STROKE_WIDTH / 2));
+            gr.setStroke(new BasicStroke(STROKE_WIDTH / 2f));
             for (int i = 0; i <= kvWidth; i++) {
                 int dy1 = isNoHeaderLine(kv.getHeaderTop(), i - 1) ? cellSize : 0;
                 int dy2 = isNoHeaderLine(kv.getHeaderBottom(), i - 1) ? cellSize : 0;
@@ -159,6 +161,9 @@ public class KarnaughMapComponent extends JComponent {
                         (cell.getCol() + 1) * cellSize + 1,
                         (cell.getRow() + 2) * cellSize - 1);
             }
+
+            // remove old var rectangles
+            varRectList.reset(xOffs, yOffs);
 
             // draw the text in the borders
             gr.setColor(Color.BLACK);
@@ -208,6 +213,11 @@ public class KarnaughMapComponent extends JComponent {
             gr.setTransform(trans);
         } else
             gr.drawString(message, 10, 20);
+
+        if (startVarRect != null) {
+            gr.setColor(Color.BLACK);
+            startVarRect.getFragment().draw(gr, xDrag, yDrag);
+        }
     }
 
     private boolean isNoHeaderLine(KarnaughMap.Header header, int i) {
@@ -225,7 +235,9 @@ public class KarnaughMapComponent extends JComponent {
                     i++;
                     dx = cellSize / 2;
                 }
-                drawFragment(getFragment(header.getVar(), header.getInvert(i)), i + 1, pos, dx, 0);
+                int var = header.getVar();
+                boolean invert = header.getInvert(i);
+                drawFragment(var, invert, i + 1, pos, dx, 0);
             }
     }
 
@@ -237,7 +249,9 @@ public class KarnaughMapComponent extends JComponent {
                 i++;
                 dy = cellSize / 2;
             }
-            drawFragment(getFragment(header.getVar(), header.getInvert(i)), pos, i + 1, 0, dy);
+            int var = header.getVar();
+            boolean invert = header.getInvert(i);
+            drawFragment(var, invert, pos, i + 1, 0, dy);
         }
     }
     //CHECKSTYLE.ON: ModifiedControlVariable
@@ -250,13 +264,20 @@ public class KarnaughMapComponent extends JComponent {
         gr.drawString(s, row * cellSize + xPos, col * cellSize + yPos);
     }
 
-    private void drawFragment(GraphicsFormatter.Fragment fr, int row, int col, int xOffs, int yOffs) {
+    private void drawFragment(int var, boolean invert, int row, int col, int xOffs, int yOffs) {
+        GraphicsFormatter.Fragment fr = getFragment(var, invert);
         if (fr == null)
             return;
         FontMetrics fontMetrics = gr.getFontMetrics();
         int xPos = (cellSize - fr.getWidth()) / 2;
         int yPos = cellSize - ((cellSize - fr.getHeight()) / 2) - fontMetrics.getDescent();
-        fr.draw(gr, row * cellSize + xPos - xOffs, col * cellSize + yPos - yOffs);
+        int xFr = row * cellSize + xPos - xOffs;
+        int yFr = col * cellSize + yPos - yOffs;
+        fr.draw(gr, xFr, yFr);
+
+        // register fragment for drag&drop action
+        Rectangle r = new Rectangle(xFr, yFr + fontMetrics.getDescent() - fr.getHeight(), fr.getWidth(), fr.getHeight());
+        varRectList.add(var, invert, r, fr);
     }
 
     private GraphicsFormatter.Fragment getFragment(int var, boolean invert) {
@@ -283,5 +304,49 @@ public class KarnaughMapComponent extends JComponent {
          * @param row       the row to modify
          */
         void modify(BoolTable boolTable, int row);
+    }
+
+    private final class MyMouseAdapter extends MouseAdapter {
+        private final Modifier tableCellModifier;
+
+        private MyMouseAdapter(Modifier tableCellModifier) {
+            this.tableCellModifier = tableCellModifier;
+        }
+
+        @Override
+        public void mouseClicked(MouseEvent mouseEvent) {
+            if (kv != null) {
+                int x = (mouseEvent.getX() - xOffs) / cellSize - 1;
+                int y = (mouseEvent.getY() - yOffs) / cellSize - 1;
+                if (x >= 0 && x < kv.getColumns() && y >= 0 && y < kv.getRows()) {
+                    int row = kv.getCell(y, x).getBoolTableRow();
+                    tableCellModifier.modify(boolTable, row);
+                }
+            }
+        }
+
+        @Override
+        public void mousePressed(MouseEvent e) {
+            startVarRect = varRectList.findVarRect(e);
+        }
+
+        @Override
+        public void mouseDragged(MouseEvent e) {
+            if (startVarRect != null) {
+                xDrag = e.getX();
+                yDrag = e.getY();
+                repaint();
+            }
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent e) {
+            VarRectList.VarRect endVarRect = varRectList.findVarRect(e);
+            if (mapLayout.swapByDragAndDrop(startVarRect, endVarRect))
+                update();
+            else
+                repaint();
+            startVarRect = null;
+        }
     }
 }

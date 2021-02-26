@@ -12,6 +12,8 @@ import de.neemann.digital.core.element.ElementTypeDescription;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.memory.importer.Importer;
 import de.neemann.digital.core.memory.rom.ROMInterface;
+import de.neemann.digital.core.ValueFormatter;
+import de.neemann.digital.lang.Lang;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,10 +42,11 @@ public class ROM extends Node implements Element, ROMInterface, ProgramMemory {
             .addAttribute(Keys.DATA)
             .addAttribute(Keys.INT_FORMAT)
             .addAttribute(Keys.IS_PROGRAM_MEMORY)
-            .addAttribute(Keys.AUTO_RELOAD_ROM);
+            .addAttribute(Keys.AUTO_RELOAD_ROM)
+            .supportsHDL();
 
     private DataField data;
-    private final IntFormat intFormat;
+    private final ValueFormatter formatter;
     private final ObservableValue output;
     private final int addrBits;
     private final int dataBits;
@@ -63,9 +66,7 @@ public class ROM extends Node implements Element, ROMInterface, ProgramMemory {
      */
     public ROM(ElementAttributes attr) {
         dataBits = attr.get(Keys.BITS);
-        output = new ObservableValue("D", dataBits)
-                .setToHighZ()
-                .setPinDescription(DESCRIPTION);
+        output = createOutput1();
         data = attr.get(Keys.DATA);
         addrBits = attr.get(Keys.ADDR_BITS);
         autoLoad = attr.get(Keys.AUTO_RELOAD_ROM);
@@ -75,7 +76,13 @@ public class ROM extends Node implements Element, ROMInterface, ProgramMemory {
             hexFile = attr.getFile(LAST_DATA_FILE_KEY);
         } else
             hexFile = null;
-        intFormat = attr.get(Keys.INT_FORMAT);
+        formatter = attr.getValueFormatter();
+    }
+
+    ObservableValue createOutput1() {
+        return new ObservableValue("D", dataBits)
+                .setToHighZ()
+                .setPinDescription(DESCRIPTION);
     }
 
     @Override
@@ -98,14 +105,20 @@ public class ROM extends Node implements Element, ROMInterface, ProgramMemory {
     @Override
     public void writeOutputs() throws NodeException {
         if (sel)
-            output.setValue(data.getDataWord(addr));
+            output.setValue(getDataWord(addr));
         else
             output.setToHighZ();
+    }
+
+    long getDataWord(int addr) {
+        return data.getDataWord(addr);
     }
 
     @Override
     public void init(Model model) throws NodeException {
         if (autoLoad) {
+            if (hexFile == null)
+                throw new NodeException(Lang.get("err_ROM_noFileGivenToLoad"), this, -1, null);
             try {
                 data = Importer.read(hexFile, dataBits);
             } catch (IOException e) {
@@ -144,8 +157,8 @@ public class ROM extends Node implements Element, ROMInterface, ProgramMemory {
     }
 
     @Override
-    public IntFormat getIntFormat() {
-        return intFormat;
+    public ValueFormatter getValueFormatter() {
+        return formatter;
     }
 
     @Override

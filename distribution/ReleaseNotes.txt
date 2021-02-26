@@ -1,19 +1,86 @@
 Release Notes
 
-HEAD, planned as v0.24
+HEAD, planned as v0.27
+
+- Added fixed point and floating point number formats.
+- Added a CSV truth table export and import.
+- Added a search field to the component tree view.
+- Added 74299
+- Refactoring of the expression format setting.
+  CAUTION: All the general settings are maybe lost at restart!
+  To avoid this, open the .digital.cfg file and remove the <entry>
+  containing the <string>ExpressionFormat</string> if it's present.
+
+v0.26, released on 25. Jan. 2021
+- Performance improvement of the simulation start.
+- Improved the gui to modify the k-map layout.
+- Improved testing of processors.
+- Improved the layout of fsm transitions in the fsm editor.
+- Added French translation. Special thanks to Nicolas Maltais who
+  provided the translation.
+- Added a "Not Connected" component to output a constant high-z value.
+- If a high-z value is connected to a logic gate input, the read value
+  is undefined.
+- Improved debugging: It is possible to set the circuit to the
+  state of a certain test result, by simply clicking on it.
+- Generic circuits are easier to debug: It is possible now to create
+  a specific, concrete circuit from a generic one.
+- In generic circuits it is now possible to add components and
+  wires to the circuit programmatically.
+- It is now possible to use a probe as output in a test case.
+- Adds undo to text fields
+- If IEEE shapes are selected in the settings, also the CircuitBuilder
+  uses wide shapes in the created circuits.
+- Fixed a bug in the Demuxer Verilog template that causes problems
+  when using multiple demuxers in the same circuit.
+- Fixed a bug in the value editor, which occurs, if high-z is the
+  default value of an input.
+- Fixed an issue which avoids to restart a running simulation by just
+  click on the start button again.
+- Added IC 74190 to the Library.
+
+v0.25, released on 10. Aug. 2020
+- Color schemes have been added to support color-blind users.
+- Unipolar and bipolar stepper motors were added.
+- Moved the "lib" folder from the "examples" folder to the root folder.
+  - In case you have added your own library circuits, you have to move
+    them manually as well.
+- Reordering of the cells in the K-Map.
+- Counters are able to act as program counters via the remote interface.
+- The circuits created have a more visible separation of the inputs.
+- The hex seven seg display is switched off in case of a high-z input.
+- A Stop component was added.
+- Improved test case parser. Now the test case is able to react on the
+  circuit's state.
+- 7482, 74193 and 744017 were added
+- Breaking changes:
+  - The layout shape uses a slightly different algorithm to determine
+    the pin positions. You may need to adjust usages of embedded circuits
+    that use the layout shape.
+  - The CommandLineTester has moved! Tests are now executed like this:
+    java -cp Digital.jar CLI test [file to test]
+       [-tests [optional file with test cases]]
+  - Text formatting was reworked. Disable formatting with a '\' in the
+    beginning does not longer work. Use "\_" to escape a underscore.
+
+v0.24, released on 1. Feb. 2020
 - Improved SVG export
 - Allows to disable inputs and outputs in the measurement graph.
 - Model analyzer is able to use switches as inputs.
-- Editor is able to store views ([CRTL]+[[n]] to store and [[n]] ro recall a view.
-  So [CTRL]+[1] stores a view in slot one and [1] recalls it.
+- Editor is able to store views ([CRTL]+[[n]] to create, [[n]] ro recall
+  a view. So [CTRL]+[1] stores a view in slot one and [1] recalls it.
 - The octal number format was added.
-- A mirroring option was added to certain components.
+- A mirroring option was added to some components.
+- Custom Java implemented components can now also implement HDL code to
+  represent the component in an HDL export.
 - Added a undo function to the table editor.
 - Adds a command line interface for testing circuits.
 - Allows to disable "snap to grid" in text and rectangle components.
 - A push button combined with a LED was added.
 - A VGA monitor was added.
-- Unnamed Tunnels are ignored silently.
+- Improved naming of new Tunnels. Unnamed Tunnels are ignored silently.
+- Overlapping pins are now connected.
+- Added support for INOUT ports in HDL generation.
 - Fixed an issue with Chinese text rendering.
 
 v0.23, released on 23. Aug. 2019

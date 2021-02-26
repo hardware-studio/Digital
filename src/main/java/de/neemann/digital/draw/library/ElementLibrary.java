@@ -27,6 +27,7 @@ import de.neemann.digital.draw.elements.Tunnel;
 import de.neemann.digital.draw.shapes.ShapeFactory;
 import de.neemann.digital.gui.Settings;
 import de.neemann.digital.gui.components.data.DummyElement;
+import de.neemann.digital.gui.components.data.ScopeTrigger;
 import de.neemann.digital.gui.components.graphics.GraphicCard;
 import de.neemann.digital.gui.components.graphics.LedMatrix;
 import de.neemann.digital.gui.components.graphics.VGA;
@@ -71,7 +72,7 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
         if (path.endsWith("/target/Digital.jar"))
             return new File(path.substring(0, path.length() - 19) + "/src/main/dig/lib");
         if (path.endsWith("Digital.jar"))
-            return new File(path.substring(0, path.length() - 12) + "/examples/lib");
+            return new File(path.substring(0, path.length() - 12) + "/lib");
 
         return new File("noLibFound");
     }
@@ -88,9 +89,9 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
     private final HashSet<String> isProgrammable = new HashSet<>();
     private final ArrayList<LibraryListener> listeners = new ArrayList<>();
     private final LibraryNode root;
+    private final ElementLibraryFolder custom;
     private JarComponentManager jarComponentManager;
     private ShapeFactory shapeFactory;
-    private ElementLibraryFolder custom;
     private File rootLibraryPath;
     private Exception exception;
     private long lastRescanTime;
@@ -129,21 +130,30 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
                         .add(DipSwitch.DESCRIPTION)
                         .add(DummyElement.TEXTDESCRIPTION)
                         .add(Probe.DESCRIPTION)
-                        .add(new LibraryNode(Lang.get("lib_more"))
+                        .add(DummyElement.DATADESCRIPTION)
+                        .add(ScopeTrigger.DESCRIPTION)
+                        .add(new LibraryNode(Lang.get("lib_displays"))
                                 .add(RGBLED.DESCRIPTION)
                                 .add(Out.POLARITYAWARELEDDESCRIPTION)
                                 .add(ButtonLED.DESCRIPTION)
                                 .add(Out.SEVENDESCRIPTION)
                                 .add(Out.SEVENHEXDESCRIPTION)
                                 .add(Out.SIXTEENDESCRIPTION)
-                                .add(LedMatrix.DESCRIPTION)
                                 .add(LightBulb.DESCRIPTION)
-                                .add(DummyElement.DATADESCRIPTION)
+                                .add(LedMatrix.DESCRIPTION)
+                        )
+                        .add(new LibraryNode(Lang.get("lib_mechanic"))
                                 .add(RotEncoder.DESCRIPTION)
+                                .add(StepperMotorUnipolar.DESCRIPTION)
+                                .add(StepperMotorBipolar.DESCRIPTION)
+                        )
+                        .add(new LibraryNode(Lang.get("lib_peripherals"))
                                 .add(Keyboard.DESCRIPTION)
                                 .add(Terminal.DESCRIPTION)
                                 .add(VGA.DESCRIPTION)
-                                .add(MIDI.DESCRIPTION)))
+                                .add(MIDI.DESCRIPTION)
+                        )
+                )
                 .add(new LibraryNode(Lang.get("lib_wires"))
                         .add(Ground.DESCRIPTION)
                         .add(VDD.DESCRIPTION)
@@ -154,7 +164,8 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
                         .add(DriverInvSel.DESCRIPTION)
                         .add(Delay.DESCRIPTION)
                         .add(PullUp.DESCRIPTION)
-                        .add(PullDown.DESCRIPTION))
+                        .add(PullDown.DESCRIPTION)
+                        .add(NotConnected.DESCRIPTION))
                 .add(new LibraryNode(Lang.get("lib_mux"))
                         .add(Multiplexer.DESCRIPTION)
                         .add(Demultiplexer.DESCRIPTION)
@@ -184,8 +195,10 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
                                 .add(EEPROMDualPort.DESCRIPTION))
                         .add(Register.DESCRIPTION)
                         .add(ROM.DESCRIPTION)
+                        .add(ROMDualPort.DESCRIPTION)
                         .add(Counter.DESCRIPTION)
-                        .add(CounterPreset.DESCRIPTION))
+                        .add(CounterPreset.DESCRIPTION)
+                        .add(PRNG.DESCRIPTION))
                 .add(new LibraryNode(Lang.get("lib_arithmetic"))
                         .add(Add.DESCRIPTION)
                         .add(Sub.DESCRIPTION)
@@ -211,14 +224,18 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
                         .add(FGNFET.DESCRIPTION)
                         .add(TransGate.DESCRIPTION))
                 .add(new LibraryNode(Lang.get("lib_misc"))
-                        .add(TestCaseElement.TESTCASEDESCRIPTION)
+                        .add(TestCaseElement.DESCRIPTION)
+                        .add(GenericInitCode.DESCRIPTION)
+                        .add(GenericCode.DESCRIPTION)
                         .add(DummyElement.RECTDESCRIPTION)
                         .add(PowerSupply.DESCRIPTION)
                         .add(BusSplitter.DESCRIPTION)
                         .add(Reset.DESCRIPTION)
                         .add(Break.DESCRIPTION)
+                        .add(Stop.DESCRIPTION)
                         .add(AsyncSeq.DESCRIPTION)
-                        .add(External.DESCRIPTION));
+                        .add(External.DESCRIPTION)
+                        .add(PinControl.DESCRIPTION));
 
         addExternalJarComponents(jarFile);
 
@@ -324,9 +341,7 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
         this.shapeFactory = shapeFactory;
     }
 
-    /**
-     * @return the shape factory
-     */
+    @Override
     public ShapeFactory getShapeFactory() {
         return shapeFactory;
     }
@@ -574,7 +589,7 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
             }
 
             ElementTypeDescriptionCustom description = createCustomDescription(file, circuit, this);
-            description.setShortName(createShortName(file));
+            description.setShortName(createShortName(file.getName(), circuit.getAttributes().getLabel()));
 
             String descriptionText = Lang.evalMultilingualContent(circuit.getAttributes().get(Keys.DESCRIPTION));
             if (descriptionText != null && descriptionText.length() > 0) {
@@ -586,18 +601,18 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
         }
     }
 
-    private String createShortName(File file) {
-        return createShortName(file.getName());
-    }
+    private String createShortName(String name, String userDefined) {
+        if (userDefined.isEmpty()) {
+            if (name.endsWith(".dig")) return name.substring(0, name.length() - 4).replace("_", "\\_");
 
-    private String createShortName(String name) {
-        if (name.endsWith(".dig")) return "\\" + name.substring(0, name.length() - 4);
-
-        String transName = Lang.getNull("elem_" + name);
-        if (transName == null)
-            return name;
-        else
-            return transName;
+            String transName = Lang.getNull("elem_" + name);
+            if (transName == null)
+                return name;
+            else
+                return transName;
+        } else {
+            return userDefined;
+        }
     }
 
     /**
@@ -605,12 +620,12 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
      *
      * @param file    the file
      * @param circuit the circuit
-     * @param library the used library
+     * @param library the library
      * @return the type description
      * @throws PinException PinException
      */
     public static ElementTypeDescriptionCustom createCustomDescription(File file, Circuit circuit, ElementLibrary library) throws PinException {
-        ElementTypeDescriptionCustom d = new ElementTypeDescriptionCustom(file, circuit);
+        ElementTypeDescriptionCustom d = new ElementTypeDescriptionCustom(file, circuit, library);
         d.setElementFactory(attributes -> new CustomElement(d));
         return d;
     }

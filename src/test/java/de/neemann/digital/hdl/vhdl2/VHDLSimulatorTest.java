@@ -6,11 +6,8 @@
 package de.neemann.digital.hdl.vhdl2;
 
 import de.neemann.digital.core.ExceptionWithOrigin;
-import de.neemann.digital.core.NodeException;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.extern.ProcessStarter;
-import de.neemann.digital.draw.elements.PinException;
-import de.neemann.digital.draw.library.ElementNotFoundException;
 import de.neemann.digital.gui.Settings;
 import de.neemann.digital.hdl.model2.HDLException;
 import de.neemann.digital.hdl.printer.CodePrinter;
@@ -34,7 +31,7 @@ public class VHDLSimulatorTest extends TestCase {
 
     /*
     public void testDebug() throws Exception {
-        File file = new File(Resources.getRoot(), "dig/test/vhdl/lut2.dig");
+        File file = new File(Resources.getRoot(), "/dig/test/pinControl/nesting.dig");
 
         ToBreakRunner br = new ToBreakRunner(file);
         System.out.println(new VHDLGenerator(br.getLibrary(), new CodePrinterStr(true)).export(br.getCircuit()));
@@ -46,8 +43,8 @@ public class VHDLSimulatorTest extends TestCase {
         File examples = new File(Resources.getRoot(), "/dig/test/vhdl");
         try {
             int tested = new FileScanner(this::checkVHDLExport).noOutput().scan(examples);
-            assertEquals(57, tested);
-            assertEquals(51, testBenches);
+            assertEquals(67, tested);
+            assertEquals(57, testBenches);
         } catch (FileScanner.SkipAllException e) {
             // if ghdl is not installed its also ok
         }
@@ -57,7 +54,18 @@ public class VHDLSimulatorTest extends TestCase {
         File examples = new File(Resources.getRoot(), "/dig/hdl");
         try {
             int tested = new FileScanner(this::checkVHDLExport).noOutput().scan(examples);
-            assertEquals(47, tested);
+            assertEquals(51, tested);
+        } catch (FileScanner.SkipAllException e) {
+            // if ghdl is not installed its also ok
+        }
+    }
+
+    public void testInSimulatorInOut() throws Exception {
+        File examples = new File(Resources.getRoot(), "/dig/test/pinControl");
+        try {
+            int tested = new FileScanner(this::checkVHDLExport).noOutput().scan(examples);
+            assertEquals(2, tested);
+            assertEquals(2, testBenches);
         } catch (FileScanner.SkipAllException e) {
             // if ghdl is not installed its also ok
         }
@@ -119,13 +127,13 @@ public class VHDLSimulatorTest extends TestCase {
     }
 
 
-    private void checkVHDLExport(File file) throws PinException, NodeException, ElementNotFoundException, IOException, FileScanner.SkipAllException, HDLException {
+    private void checkVHDLExport(File file) throws Exception {
         ToBreakRunner br = new ToBreakRunner(file);
         File dir = Files.createTempDirectory("digital_vhdl_" + getTime() + "_").toFile();
         try {
             File vhdlFile = new File(dir, file.getName()
                     .replace('.', '_')
-                    .replace('-', '_')+ ".vhdl");
+                    .replace('-', '_') + ".vhdl");
             CodePrinter out = new CodePrinter(vhdlFile);
             try (VHDLGenerator vhdl = new VHDLGenerator(br.getLibrary(), out)) {
                 vhdl.export(br.getCircuit());
@@ -171,7 +179,7 @@ public class VHDLSimulatorTest extends TestCase {
     }
 
     private String getTime() {
-        DateFormat f = new SimpleDateFormat("YY-MM-dd_HH-mm_ss");
+        DateFormat f = new SimpleDateFormat("yy-MM-dd_HH-mm_ss");
         return f.format(new Date());
     }
 

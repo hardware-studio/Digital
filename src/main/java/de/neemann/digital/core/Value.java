@@ -5,6 +5,8 @@
  */
 package de.neemann.digital.core;
 
+import de.neemann.digital.core.io.InValue;
+
 import static de.neemann.digital.core.ObservableValue.zMaskString;
 
 /**
@@ -15,6 +17,19 @@ public class Value {
     private final long value;
     private final long highZ;
     private final int bits;
+    private final long mask;
+
+    /**
+     * Creates a new high z Value
+     *
+     * @param bits the number of high z bits
+     */
+    public Value(int bits) {
+        this.bits = bits;
+        this.mask = Bits.mask(bits);
+        this.value = 0;
+        this.highZ = mask;
+    }
 
     /**
      * Creates a new Value
@@ -24,14 +39,34 @@ public class Value {
      */
     public Value(long value, int bits) {
         this.bits = bits;
-        this.value = value & Bits.mask(bits);
+        this.mask = Bits.mask(bits);
+        this.value = value & mask;
         this.highZ = 0;
+    }
+
+    /**
+     * Creates a new Value
+     *
+     * @param value the value
+     * @param bits  the number of bits
+     */
+    public Value(InValue value, int bits) {
+        this.bits = bits;
+        this.mask = Bits.mask(bits);
+        if (value.isHighZ()) {
+            this.value = 0;
+            this.highZ = mask;
+        } else {
+            this.value = value.getValue() & mask;
+            this.highZ = 0;
+        }
     }
 
     Value(ObservableValue observableValue) {
         value = observableValue.getValue();
         highZ = observableValue.getHighZ();
         bits = observableValue.getBits();
+        this.mask = Bits.mask(bits);
     }
 
     /**
@@ -77,7 +112,7 @@ public class Value {
     @Override
     public String toString() {
         if (highZ != 0)
-            if (highZ == Bits.mask(bits))
+            if (highZ == mask)
                 return "Z";
             else {
                 return zMaskString(value, highZ, bits);
@@ -100,5 +135,14 @@ public class Value {
         long m = ~highZ;
 
         return (value & m) == (other.value & m);
+    }
+
+    /**
+     * Applies the value to the oObservable
+     *
+     * @param val the observable value
+     */
+    public void applyTo(ObservableValue val) {
+        val.set(value, highZ);
     }
 }

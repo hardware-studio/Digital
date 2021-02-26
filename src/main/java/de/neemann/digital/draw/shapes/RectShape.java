@@ -5,7 +5,6 @@
  */
 package de.neemann.digital.draw.shapes;
 
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescriptions;
@@ -15,11 +14,12 @@ import de.neemann.digital.draw.graphics.*;
 import de.neemann.digital.lang.Lang;
 
 import static de.neemann.digital.draw.shapes.GenericShape.SIZE;
+import static de.neemann.digital.draw.shapes.GenericShape.SIZE2;
 
 /**
- * Simple text
+ * Simple rectangle
  */
-public class RectShape implements Shape {
+public class RectShape implements ShapeMatch {
     private final String label;
     private final int width;
     private final int height;
@@ -58,7 +58,7 @@ public class RectShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         return null;
     }
 
@@ -90,8 +90,11 @@ public class RectShape implements Shape {
     }
 
     @Override
-    public boolean onlyBorderClickable() {
-        return true;
+    public boolean matches(Vector pos) {
+        return (pos.x > -SIZE2 && pos.x < SIZE2 && pos.y > -SIZE2 && pos.y < height * SIZE + SIZE2)
+                || (pos.x > width * SIZE - SIZE2 && pos.x < width * SIZE + SIZE2 && pos.y > -SIZE2 && pos.y < height * SIZE + SIZE2)
+                || (pos.y > -SIZE2 && pos.y < SIZE2 && pos.x > -SIZE2 && pos.x < width * SIZE + SIZE2)
+                || (pos.y > height * SIZE - SIZE2 && pos.y < height * SIZE + SIZE2 && pos.x > -SIZE2 && pos.x < width * SIZE + SIZE2);
     }
 
 }

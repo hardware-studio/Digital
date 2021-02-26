@@ -5,13 +5,11 @@
  */
 package de.neemann.digital.draw.shapes;
 
-import de.neemann.digital.core.IntFormat;
 import de.neemann.digital.core.ObservableValue;
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.Value;
 import de.neemann.digital.core.element.ElementAttributes;
-import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescriptions;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.draw.elements.IOState;
 import de.neemann.digital.draw.elements.Pin;
 import de.neemann.digital.draw.elements.Pins;
@@ -27,7 +25,7 @@ public class ProbeShape implements Shape {
 
     private final String label;
     private final PinDescriptions inputs;
-    private final IntFormat format;
+    private final ValueFormatter formatter;
     private final boolean isLabel;
     private ObservableValue inValue;
     private Value inValueCopy;
@@ -43,7 +41,7 @@ public class ProbeShape implements Shape {
         this.inputs = inputs;
         label = attr.getLabel();
         isLabel = label != null && label.length() > 0;
-        this.format = attr.get(Keys.INT_FORMAT);
+        this.formatter = attr.getValueFormatter();
     }
 
     @Override
@@ -52,9 +50,8 @@ public class ProbeShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         inValue = ioState.getInput(0);
-        inValue.addObserverToValue(guiObserver);
         return null;
     }
 
@@ -75,7 +72,7 @@ public class ProbeShape implements Shape {
         }
         String v = "?";
         if (inValueCopy != null)
-            v = format.formatToView(inValueCopy);
+            v = formatter.formatToView(inValueCopy);
         graphic.drawText(new Vector(2, dy), v, orientation, Style.NORMAL);
 
     }

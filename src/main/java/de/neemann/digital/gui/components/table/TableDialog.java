@@ -16,6 +16,8 @@ import de.neemann.digital.analyse.expression.Variable;
 import de.neemann.digital.analyse.expression.format.FormatterException;
 import de.neemann.digital.analyse.expression.modify.*;
 import de.neemann.digital.analyse.format.TruthTableFormatter;
+import de.neemann.digital.analyse.format.TruthTableFormatterCSV;
+import de.neemann.digital.analyse.format.TruthTableFormatterHex;
 import de.neemann.digital.analyse.format.TruthTableFormatterTestCase;
 import de.neemann.digital.analyse.quinemc.BoolTableByteArray;
 import de.neemann.digital.builder.ATF150x.ATFDevice;
@@ -60,7 +62,9 @@ import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -76,6 +80,7 @@ public class TableDialog extends JDialog {
     private static final Logger LOGGER = LoggerFactory.getLogger(TableDialog.class);
     private static final Preferences PREFS = Preferences.userRoot().node("dig").node("generator");
     private static final Color MYGRAY = new Color(230, 230, 230);
+    private static final Color ODDWHITE = new Color(255, 255, 220);
     private static final List<Key> LIST = new ArrayList<>();
 
     static {
@@ -107,15 +112,15 @@ public class TableDialog extends JDialog {
     private final HashMap<String, HardwareDescriptionGenerator> availGenerators = new HashMap<>();
     private final JMenu hardwareMenu;
     private final TruthTableTableModel model;
+    private final AllSolutionsDialog allSolutionsDialog;
+    private final KarnaughMapDialog kvMap;
+    private final Mouse mouse = Mouse.getMouse();
+    private final UndoManager<TruthTable> undoManager;
     private JCheckBoxMenuItem createJK;
     private File filename;
     private int columnIndex;
-    private AllSolutionsDialog allSolutionsDialog;
     private ExpressionListenerStore lastGeneratedExpressions;
-    private KarnaughMapDialog kvMap;
     private JMenuItem lastUsedGenratorMenuItem;
-    private Mouse mouse = Mouse.getMouse();
-    private UndoManager<TruthTable> undoManager;
 
     /**
      * Creates a new instance
@@ -136,7 +141,7 @@ public class TableDialog extends JDialog {
         model = new TruthTableTableModel(undoManager);
         model.addTableModelListener(new CalculationTableModelListener());
 
-        kvMap = new KarnaughMapDialog(this, (boolTable, row) -> model.incValue(boolTable, row));
+        kvMap = new KarnaughMapDialog(this, model::incValue);
 
         statusBar = new ExpressionComponent();
         font = Screen.getInstance().getFont(1.66f);
@@ -204,7 +209,7 @@ public class TableDialog extends JDialog {
             public void actionPerformed(ActionEvent e) {
                 ArrayList<String> varNames = undoManager.getActual().getVarNames();
                 if (new ElementOrderer<>(TableDialog.this, Lang.get("menu_table_reorder_inputs"), new ElementOrderer.ListOrder<>(varNames))
-                        .addDeleteButton()
+                        .addDeleteButton(2)
                         .addOkButton()
                         .showDialog()) {
 
@@ -241,7 +246,7 @@ public class TableDialog extends JDialog {
             public void actionPerformed(ActionEvent e) {
                 ArrayList<String> resultNames = undoManager.getActual().getResultNames();
                 if (new ElementOrderer<>(TableDialog.this, Lang.get("menu_table_reorder_outputs"), new ElementOrderer.ListOrder<>(resultNames))
-                        .addDeleteButton()
+                        .addDeleteButton(1)
                         .addOkButton()
                         .showDialog()) {
                     try {
@@ -372,6 +377,7 @@ public class TableDialog extends JDialog {
                 JFileChooser fc = new MyFileChooser();
                 if (TableDialog.this.filename != null)
                     fc.setSelectedFile(SaveAsHelper.checkSuffix(TableDialog.this.filename, "tru"));
+                fc.setFileFilter(new FileNameExtensionFilter(Lang.get("msg_truthTableCSV"), "csv"));
                 fc.setFileFilter(new FileNameExtensionFilter(Lang.get("msg_truthTable"), "tru"));
                 if (fc.showOpenDialog(TableDialog.this) == JFileChooser.APPROVE_OPTION) {
                     try {
@@ -403,23 +409,17 @@ public class TableDialog extends JDialog {
             }
         });
 
-
-        fileMenu.add(new ToolTipAction(Lang.get("menu_table_exportTableLaTeX")) {
+        fileMenu.add(new TextExportAction(Lang.get("menu_table_exportTablePlainText")) {
             @Override
-            public void actionPerformed(ActionEvent e) {
-                try {
-                    final LaTeXExpressionListener laTeXExpressionListener = new LaTeXExpressionListener(undoManager.getActual());
-                    ExpressionListener expressionListener = laTeXExpressionListener;
-                    if (createJK.isSelected())
-                        expressionListener = new ExpressionListenerJK(expressionListener);
-                    lastGeneratedExpressions.replayTo(expressionListener);
-                    expressionListener.close();
+            ExpressionListener createExpressionListener() {
+                return new PlainTextExpressionListener();
+            }
+        });
 
-                    new ShowStringDialog(TableDialog.this, Lang.get("win_table_exportDialog"),
-                            laTeXExpressionListener.toString()).setVisible(true);
-                } catch (ExpressionException | FormatterException e1) {
-                    new ErrorMessage(Lang.get("msg_errorDuringCalculation")).addCause(e1).show(TableDialog.this);
-                }
+        fileMenu.add(new TextExportAction(Lang.get("menu_table_exportTableLaTeX")) {
+            @Override
+            ExpressionListener createExpressionListener() throws ExpressionException {
+                return new LaTeXExpressionListener(undoManager.getActual());
             }
         });
 
@@ -428,7 +428,7 @@ public class TableDialog extends JDialog {
             public void actionPerformed(ActionEvent e) {
                 try {
                     ModelAnalyserInfo modelAnalyzerInfo = undoManager.getActual().getModelAnalyzerInfo();
-                    if (modelAnalyzerInfo.isSequential())
+                    if (modelAnalyzerInfo != null && modelAnalyzerInfo.isSequential())
                         JOptionPane.showMessageDialog(
                                 TableDialog.this,
                                 Lang.get("menu_table_createFunctionFixture_isSequential"));
@@ -442,22 +442,29 @@ public class TableDialog extends JDialog {
             }
         }.setToolTip(Lang.get("menu_table_createFunctionFixture_tt")).createJMenuItem());
 
-        fileMenu.add(new ToolTipAction(Lang.get("menu_table_exportHex")) {
+        JMenu export = new JMenu(Lang.get("menu_export"));
+        fileMenu.add(export);
+        export.add(new FileExportActionConfirm(Lang.get("menu_table_exportHex"), "hex") {
             @Override
-            public void actionPerformed(ActionEvent e) {
-                int res = JOptionPane.OK_OPTION;
-                if (undoManager.getActual().getVars().size() > 20)
-                    res = JOptionPane.showConfirmDialog(TableDialog.this, Lang.get("msg_tableHasManyRowsConfirm"));
-                if (res == JOptionPane.OK_OPTION) {
-                    JFileChooser fc = new MyFileChooser();
-                    if (TableDialog.this.filename != null)
-                        fc.setSelectedFile(SaveAsHelper.checkSuffix(TableDialog.this.filename, "hex"));
-                    new SaveAsHelper(TableDialog.this, fc, "hex")
-                            .checkOverwrite(file -> undoManager.getActual().saveHex(file));
-                }
+            protected String getString() throws ExpressionException {
+                return new TruthTableFormatterHex().format(undoManager.getActual());
             }
         }.setToolTip(Lang.get("menu_table_exportHex_tt")).createJMenuItem());
-
+        export.add(new FileExportAction(Lang.get("menu_table_exportCSVCondensed"), "csv") {
+            @Override
+            protected String getString() throws FormatterException, ExpressionException {
+                ExpressionListenerCSVCondensed expressionListener = new ExpressionListenerCSVCondensed();
+                lastGeneratedExpressions.replayTo(expressionListener);
+                expressionListener.close();
+                return expressionListener.toString();
+            }
+        }.setToolTip(Lang.get("menu_table_exportCSVCondensed_tt")).createJMenuItem());
+        export.add(new FileExportActionConfirm(Lang.get("menu_table_exportCSV"), "csv") {
+            @Override
+            protected String getString() throws ExpressionException {
+                return new TruthTableFormatterCSV().format(undoManager.getActual());
+            }
+        }.setToolTip(Lang.get("menu_table_exportCSV_tt")).createJMenuItem());
 
         createJK = new JCheckBoxMenuItem(Lang.get("menu_table_JK"));
         createJK.addActionListener(e -> calculateExpressions());
@@ -770,7 +777,7 @@ public class TableDialog extends JDialog {
     }
 
     private final class SizeAction extends AbstractAction {
-        private int n;
+        private final int n;
 
         private SizeAction(int n) {
             super(Lang.get("menu_table_N_variables", n));
@@ -785,7 +792,7 @@ public class TableDialog extends JDialog {
     }
 
     private final class SizeSequentialAction extends AbstractAction {
-        private int n;
+        private final int n;
 
         private SizeSequentialAction(int n) {
             super(Lang.get("menu_table_N_variables", n));
@@ -814,7 +821,7 @@ public class TableDialog extends JDialog {
     }
 
     private final class SizeSequentialBidirectionalAction extends AbstractAction {
-        private int n;
+        private final int n;
 
         private SizeSequentialBidirectionalAction(int n) {
             super(Lang.get("menu_table_N_variables", n));
@@ -856,8 +863,12 @@ public class TableDialog extends JDialog {
             label.setFont(font);
             if (column < undoManager.getActual().getVars().size())
                 label.setBackground(MYGRAY);
-            else
-                label.setBackground(Color.WHITE);
+            else {
+                if ((row & 4) == 0)
+                    label.setBackground(Color.WHITE);
+                else
+                    label.setBackground(ODDWHITE);
+            }
 
             if (value instanceof Integer) {
                 int v = (int) value;
@@ -910,17 +921,17 @@ public class TableDialog extends JDialog {
                 switch (expressions.size()) {
                     case 0:
                         statusBar.setVisible(false);
-                        allSolutionsDialog.setNeeded(false);
+                        allSolutionsDialog.setNeeded(false, TableDialog.this.getBounds());
                         break;
                     case 1:
                         statusBar.setVisible(true);
                         statusBar.setExpression(expressions.get(0));
-                        allSolutionsDialog.setNeeded(false);
+                        allSolutionsDialog.setNeeded(false, TableDialog.this.getBounds());
                         break;
                     default:
                         statusBar.setVisible(false);
                         allSolutionsDialog.setExpressions(expressions);
-                        allSolutionsDialog.setNeeded(true);
+                        allSolutionsDialog.setNeeded(true, TableDialog.this.getBounds());
                         toFront();
                 }
             });
@@ -974,4 +985,80 @@ public class TableDialog extends JDialog {
             }
         }
     }
+
+    private abstract class TextExportAction extends ToolTipAction {
+        private TextExportAction(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            try {
+                final ExpressionListener laTeXExpressionListener = createExpressionListener();
+                ExpressionListener expressionListener = laTeXExpressionListener;
+                if (createJK.isSelected())
+                    expressionListener = new ExpressionListenerJK(expressionListener);
+                lastGeneratedExpressions.replayTo(expressionListener);
+                expressionListener.close();
+
+                new ShowStringDialog(TableDialog.this, Lang.get("win_table_exportDialog"),
+                        laTeXExpressionListener.toString()).setVisible(true);
+            } catch (ExpressionException | FormatterException e1) {
+                new ErrorMessage(Lang.get("msg_errorDuringCalculation")).addCause(e1).show(TableDialog.this);
+            }
+        }
+
+        abstract ExpressionListener createExpressionListener() throws ExpressionException;
+    }
+
+    private abstract class FileExportAction extends ToolTipAction {
+        private final String suffix;
+
+        private FileExportAction(String name, String suffix) {
+            super(name);
+            this.suffix = suffix;
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (confirmExport()) {
+                JFileChooser fc = new MyFileChooser();
+                if (TableDialog.this.filename != null)
+                    fc.setSelectedFile(SaveAsHelper.checkSuffix(TableDialog.this.filename, suffix));
+                new SaveAsHelper(TableDialog.this, fc, suffix)
+                        .checkOverwrite(file -> {
+                            try {
+                                try (Writer w = new FileWriter(file)) {
+                                    w.write(getString());
+                                }
+                            } catch (FormatterException | ExpressionException ex) {
+                                throw new IOException(ex);
+                            }
+                        });
+            }
+        }
+
+        protected boolean confirmExport() {
+            return true;
+        }
+
+        protected abstract String getString() throws FormatterException, ExpressionException;
+    }
+
+    private abstract class FileExportActionConfirm extends FileExportAction {
+
+        private FileExportActionConfirm(String name, String suffix) {
+            super(name, suffix);
+        }
+
+        @Override
+        protected boolean confirmExport() {
+            int res = JOptionPane.OK_OPTION;
+            if (undoManager.getActual().getVars().size() > 20)
+                res = JOptionPane.showConfirmDialog(TableDialog.this, Lang.get("msg_tableHasManyRowsConfirm"));
+            return res == JOptionPane.OK_OPTION;
+        }
+
+    }
+
 }

@@ -5,15 +5,12 @@
  */
 package de.neemann.digital.draw.elements;
 
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.SyncAccess;
 import de.neemann.digital.core.element.*;
 import de.neemann.digital.draw.graphics.*;
-import de.neemann.digital.draw.shapes.*;
 import de.neemann.digital.draw.shapes.Shape;
-import de.neemann.digital.draw.shapes.custom.CustomShape;
+import de.neemann.digital.draw.shapes.*;
 import de.neemann.digital.gui.components.CircuitComponent;
-import de.neemann.digital.hdl.hgs.Context;
 import de.neemann.gui.Screen;
 
 import javax.swing.*;
@@ -38,11 +35,9 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
     private transient Element element;
     // shape is set to null and recreated if needed if attributes are changed
     private transient Shape shape;
-    private transient Boolean autoWire;
     // shapes are recreated if attributes are changed, therefore a factory is necessary and not only a simple shape!
     private transient ShapeFactory shapeFactory;
     private transient Transform transform;
-    private transient Context genericArgs;
 
     // these fields are stored to disk
     private String elementName;
@@ -113,7 +108,6 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
 
     private void resetShape() {
         shape = null;
-        autoWire = null;
         resetGeometry();
     }
 
@@ -154,17 +148,15 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      */
     public boolean matches(Vector p, boolean includeText) {
         GraphicMinMax m = getMinMax(includeText);
-        if (getShape().onlyBorderClickable()) {
-            int width = SIZE2;
-            return ((Math.abs(p.x - m.getMin().x) < width || Math.abs(p.x - m.getMax().x) < width)
-                    && (m.getMin().y <= p.y) && (p.y <= m.getMax().y))
-                    || ((Math.abs(p.y - m.getMin().y) < width || Math.abs(p.y - m.getMax().y) < width)
-                    && (m.getMin().x <= p.x) && (p.x <= m.getMax().x));
-        } else
-            return (m.getMin().x <= p.x)
-                    && (m.getMin().y <= p.y)
-                    && (p.x <= m.getMax().x)
-                    && (p.y <= m.getMax().y);
+        boolean inBox = (m.getMin().x - SIZE2 <= p.x)
+                && (m.getMin().y - SIZE2 <= p.y)
+                && (p.x <= m.getMax().x + SIZE2)
+                && (p.y <= m.getMax().y + SIZE2);
+
+        if (inBox && getShape() instanceof ShapeMatch)
+            return ((ShapeMatch) getShape()).matches(getTransform().invert().transform(p));
+
+        return inBox;
     }
 
     /**
@@ -201,19 +193,6 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
             resetGeometry();
         }
         return shape;
-    }
-
-    /**
-     * @return true if this shape supports auto wire
-     */
-    public boolean isAutoWireCompatible() {
-        if (autoWire == null) {
-            Shape shape = getShape();
-            autoWire = !(shape instanceof DILShape || shape instanceof CustomShape || shape instanceof LayoutShape);
-            if (autoWire)
-                autoWire = shape.getPins().autoWireCompatible();
-        }
-        return autoWire;
     }
 
     @Override
@@ -342,16 +321,15 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
     /**
      * Sets the state of the elements inputs and outputs
      *
-     * @param ioState     actual state, if null VisualPart is reseted
-     * @param guiObserver can be used to update the GUI by calling hasChanged, maybe null
+     * @param ioState actual state, if null VisualPart is reseted
      */
-    public void setState(IOState ioState, Observer guiObserver) {
+    public void setState(IOState ioState) {
         this.ioState = ioState;
         if (ioState == null) {
             interactor = null;
             resetShape();
         } else
-            interactor = getShape().applyStateMonitor(ioState, guiObserver);
+            interactor = getShape().applyStateMonitor(ioState);
     }
 
     /**
@@ -362,13 +340,10 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      * @param pos            the position
      * @param posInComponent position in CircuitComponent
      * @param modelSync      used to access the running model
-     * @return true if model is changed
      */
-    public boolean elementClicked(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
+    public void elementClicked(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
         if (interactor != null)
-            return interactor.clicked(cc, pos, ioState, element, modelSync);
-        else
-            return false;
+            interactor.clicked(cc, pos, ioState, element, modelSync);
     }
 
     /**
@@ -379,13 +354,10 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      * @param pos            the position
      * @param posInComponent position in CircuitComponent
      * @param modelSync      used to access the running model
-     * @return true if model is changed
      */
-    public boolean elementPressed(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
+    public void elementPressed(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
         if (interactor != null)
-            return interactor.pressed(cc, pos, ioState, element, modelSync);
-        else
-            return false;
+            interactor.pressed(cc, pos, ioState, element, modelSync);
     }
 
     /**
@@ -396,13 +368,10 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      * @param pos            the position
      * @param posInComponent position in CircuitComponent
      * @param modelSync      used to access the running model
-     * @return true if model is changed
      */
-    public boolean elementReleased(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
+    public void elementReleased(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
         if (interactor != null)
-            return interactor.released(cc, pos, ioState, element, modelSync);
-        else
-            return false;
+            interactor.released(cc, pos, ioState, element, modelSync);
     }
 
     /**
@@ -413,13 +382,10 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      * @param pos            the position
      * @param posInComponent position in CircuitComponent
      * @param modelSync      used to access the running model
-     * @return true if model is changed
      */
-    public boolean elementDragged(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
+    public void elementDragged(CircuitComponent cc, Point pos, Vector posInComponent, SyncAccess modelSync) {
         if (interactor != null)
-            return interactor.dragged(cc, pos, posInComponent, getTransform(), ioState, element, modelSync);
-        else
-            return false;
+            interactor.dragged(cc, pos, posInComponent, getTransform(), ioState, element, modelSync);
     }
 
 
@@ -492,22 +458,6 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
     }
 
     /**
-     * Sets the generic arguments for this element
-     *
-     * @param genericArgs the arguments
-     */
-    public void setGenericArgs(Context genericArgs) {
-        this.genericArgs = genericArgs;
-    }
-
-    /**
-     * @return the generic arguments for this element
-     */
-    public Context getGenericArgs() {
-        return genericArgs;
-    }
-
-    /**
      * Sets the name of this element
      *
      * @param elementName the new name
@@ -515,4 +465,30 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
     public void setElementName(String elementName) {
         this.elementName = elementName;
     }
+
+
+    /**
+     * Returns true if there is a pin at the given position
+     *
+     * @param pos the position
+     * @return true if position is a pin position
+     */
+    public boolean isPinPos(Vector pos) {
+        return getPinAt(pos) != null;
+    }
+
+    /**
+     * Returns the pin at the given position
+     *
+     * @param pos position
+     * @return the pin or null if no pin found
+     */
+    public Pin getPinAt(Vector pos) {
+        for (Pin p : getPins())
+            if (p.getPos().equals(pos))
+                return p;
+
+        return null;
+    }
+
 }

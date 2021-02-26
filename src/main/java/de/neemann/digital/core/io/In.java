@@ -10,6 +10,7 @@ import de.neemann.digital.core.element.Element;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.ElementTypeDescription;
 import de.neemann.digital.core.element.Keys;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.lang.Lang;
 
 /**
@@ -39,15 +40,16 @@ public class In implements Element {
             .addAttribute(Keys.DESCRIPTION)
             .addAttribute(Keys.INT_FORMAT)
             .addAttribute(Keys.PINNUMBER)
-            .addAttribute(Keys.ADD_VALUE_TO_GRAPH);
+            .addAttribute(Keys.ADD_VALUE_TO_GRAPH)
+            .supportsHDL();
 
     private final ObservableValue output;
     private final String label;
     private final String pinNumber;
-    private final IntFormat format;
+    private final ValueFormatter formatter;
+    private final boolean showInGraph;
     private Model model;
     private ObservableValue input;
-    private boolean showInGraph;
 
     /**
      * Create a new instance
@@ -60,14 +62,18 @@ public class In implements Element {
         output = new ObservableValue("out", attributes.get(Keys.BITS))
                 .setPinDescription(DESCRIPTION)
                 .setPinNumber(pinNumber);
-        boolean highZ = attributes.get(Keys.IS_HIGH_Z) || value.isHighZ();
-        if (highZ)
-            output.setToHighZ().setBidirectional();
+
+        if (attributes.get(Keys.IS_HIGH_Z) || value.isHighZ())
+            output.setBidirectional();
+
+        if (value.isHighZ())
+            output.setToHighZ();
         else
             output.setValue(value.getValue());
+
         label = attributes.getLabel();
-        format = attributes.get(Keys.INT_FORMAT);
-        showInGraph= attributes.get(Keys.ADD_VALUE_TO_GRAPH);
+        formatter = attributes.getValueFormatter();
+        showInGraph = attributes.get(Keys.ADD_VALUE_TO_GRAPH);
     }
 
     @Override
@@ -87,7 +93,7 @@ public class In implements Element {
                 .setPinNumber(pinNumber)
                 .setBidirectionalReader(input)
                 .setShowInGraph(showInGraph)
-                .setFormat(format));
+                .setFormat(formatter));
         this.model = model;
     }
 

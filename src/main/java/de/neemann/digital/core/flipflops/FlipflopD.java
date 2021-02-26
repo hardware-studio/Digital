@@ -31,7 +31,8 @@ public class FlipflopD extends Node implements Element, Countable {
             .addAttribute(Keys.LABEL)
             .addAttribute(Keys.DEFAULT)
             .addAttribute(Keys.INVERTER_CONFIG)
-            .addAttribute(Keys.VALUE_IS_PROBE);
+            .addAttribute(Keys.VALUE_IS_PROBE)
+            .supportsHDL();
 
     private final int bits;
     private final boolean isProbe;
@@ -119,7 +120,7 @@ public class FlipflopD extends Node implements Element, Countable {
                 value = v;
                 q.setValue(value);
                 qn.setValue(~value);
-            }));
+            }).setTestOutput());
     }
 
     /**

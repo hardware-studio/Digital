@@ -5,12 +5,11 @@
  */
 package de.neemann.digital.draw.shapes;
 
-import de.neemann.digital.core.Observer;
 import de.neemann.digital.core.Value;
 import de.neemann.digital.core.element.ElementAttributes;
 import de.neemann.digital.core.element.Keys;
 import de.neemann.digital.core.element.PinDescriptions;
-import de.neemann.digital.core.IntFormat;
+import de.neemann.digital.core.ValueFormatter;
 import de.neemann.digital.draw.elements.IOState;
 import de.neemann.digital.draw.elements.Pin;
 import de.neemann.digital.draw.elements.Pins;
@@ -42,7 +41,7 @@ public class OutputShape implements Shape {
     public static final Vector RADL = new Vector(OUT_SIZE, OUT_SIZE);
     private final String label;
     private final PinDescriptions inputs;
-    private final IntFormat format;
+    private final ValueFormatter formatter;
     private IOState ioState;
     private Value value;
 
@@ -61,7 +60,7 @@ public class OutputShape implements Shape {
         else
             this.label = attr.getLabel() + " (" + pinNumber + ")";
 
-        format = attr.get(Keys.INT_FORMAT);
+        formatter = attr.getValueFormatter();
     }
 
     @Override
@@ -70,9 +69,8 @@ public class OutputShape implements Shape {
     }
 
     @Override
-    public Interactor applyStateMonitor(IOState ioState, Observer guiObserver) {
+    public Interactor applyStateMonitor(IOState ioState) {
         this.ioState = ioState;
-        ioState.getInput(0).addObserverToValue(guiObserver);
         return null;
     }
 
@@ -95,7 +93,7 @@ public class OutputShape implements Shape {
                 style = Style.getWireStyle(value);
                 if (value.getBits() > 1) {
                     Vector textPos = new Vector(1 + OUT_SIZE, -4 - OUT_SIZE);
-                    graphic.drawText(textPos, format.formatToView(value), Orientation.CENTERBOTTOM, Style.NORMAL);
+                    graphic.drawText(textPos, formatter.formatToView(value), Orientation.CENTERBOTTOM, Style.NORMAL);
                 }
             }
 

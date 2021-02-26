@@ -14,7 +14,6 @@ import de.neemann.digital.core.memory.RAMSinglePort;
 import de.neemann.digital.core.memory.ROM;
 import de.neemann.digital.core.memory.importer.Importer;
 import de.neemann.digital.draw.elements.PinException;
-import de.neemann.digital.draw.library.ElementNotFoundException;
 import junit.framework.TestCase;
 
 import java.io.File;
@@ -24,7 +23,7 @@ import java.io.IOException;
  */
 public class TestProcessor extends TestCase {
 
-    private ToBreakRunner createProcessor(String program) throws IOException, PinException, NodeException, ElementNotFoundException {
+    private ToBreakRunner createProcessor(String program) throws Exception {
         ToBreakRunner runner = new ToBreakRunner("../../main/dig/processor/Processor.dig", false);
         Model model = runner.getModel();
 
@@ -41,8 +40,8 @@ public class TestProcessor extends TestCase {
         return runner;
     }
 
-    private ToBreakRunner createProcessorMux(String program) throws IOException, PinException, NodeException, ElementNotFoundException {
-        ToBreakRunner runner = new ToBreakRunner("../../main/dig/processor/ProcessorMux.dig", false);
+    private ToBreakRunner createProcessorMux(String program) throws Exception {
+        ToBreakRunner runner = new ToBreakRunner("../../main/dig/processor/ProcessorHDL.dig", false);
         Model model = runner.getModel();
 
         ObservableValue instr = model.getInput("Instr");
@@ -65,10 +64,10 @@ public class TestProcessor extends TestCase {
      * @throws NodeException NodeException
      * @throws PinException  PinException
      */
-    public void testFibonacci() throws IOException, NodeException, PinException, ElementNotFoundException {
+    public void testFibonacci() throws Exception {
         RAMSinglePort ram =
                 createProcessor("programs/fibonacci.hex")
-                        .runToBreak(98644)
+                        .runToBreak(100616)
                         .getSingleNode(RAMSinglePort.class);
 
         assertEquals(610, ram.getMemory().getDataWord(0));
@@ -82,11 +81,11 @@ public class TestProcessor extends TestCase {
      * @throws NodeException NodeException
      * @throws PinException  PinException
      */
-    public void testFibonacciMux() throws IOException, NodeException, PinException, ElementNotFoundException {
+    public void testFibonacciMux() throws Exception {
         ToBreakRunner processor = createProcessorMux("programs/fibonacci.hex");
         processor.getModel().getInput("reset").setBool(false);
         RAMDualPort ram = processor
-                .runToBreak(98644)
+                .runToBreak(100616)
                 .getSingleNode(RAMDualPort.class);
 
         assertEquals(610, ram.getMemory().getDataWord(0));
@@ -101,10 +100,10 @@ public class TestProcessor extends TestCase {
      * @throws NodeException NodeException
      * @throws PinException  PinException
      */
-    public void testProcessorSelfTest() throws IOException, NodeException, PinException, ElementNotFoundException {
+    public void testProcessorSelfTest() throws Exception {
         RAMSinglePort ram =
                 createProcessor("programs/selftest.hex")
-                        .runToBreak(700)
+                        .runToBreak(790)
                         .getSingleNode(RAMSinglePort.class);
 
         assertEquals(2, ram.getMemory().getDataWord(256));
@@ -118,11 +117,11 @@ public class TestProcessor extends TestCase {
      * @throws NodeException NodeException
      * @throws PinException  PinException
      */
-    public void testProcessorSelfTestMux() throws IOException, NodeException, PinException, ElementNotFoundException {
+    public void testProcessorSelfTestMux() throws Exception {
         ToBreakRunner processor = createProcessorMux("programs/selftest.hex");
         processor.getModel().getInput("reset").setBool(false);
         RAMDualPort ram = processor
-                .runToBreak(700)
+                .runToBreak(790)
                 .getSingleNode(RAMDualPort.class);
 
         assertEquals(2, ram.getMemory().getDataWord(256));

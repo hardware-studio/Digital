@@ -42,6 +42,14 @@ public class Transition extends Movable<Transition> {
         initPos();
     }
 
+    Transition(Transition other, ArrayList<State> states, List<State> otherStates) {
+        this.condition = other.condition;
+        this.fromState = states.get(otherStates.indexOf(other.fromState));
+        this.toState = states.get(otherStates.indexOf(other.toState));
+        setValues(other.getValues());
+        setPos(other.getPos());
+    }
+
     /**
      * Calculates the repulsive forces
      *
@@ -86,8 +94,8 @@ public class Transition extends Movable<Transition> {
 
 
     @Override
-    public void setPosByMouse(VectorFloat position) {
-        super.setPosByMouse(posConstrain(position));
+    public void setPosDragging(VectorFloat position) {
+        super.setPosDragging(posConstrain(position));
     }
 
     @Override
@@ -141,35 +149,24 @@ public class Transition extends Movable<Transition> {
             anchor0 = start.add(d0.mul(t));
             anchor = end.add(d3.mul(t));
         } else {
+            float n = 1.75f;
+            VectorFloat correctedPos = getPos().mul(n).add(fromState.getPos().add(toState.getPos()).mul((1 - n) / 2));
             start = fromState.getPos().add(
-                    getPos().sub(fromState.getPos()).norm().mul(fromState.getVisualRadius() + Style.MAXLINETHICK));
+                    correctedPos.sub(fromState.getPos()).norm().mul(fromState.getVisualRadius() + Style.MAXLINETHICK));
             end = toState.getPos().add(
-                    getPos().sub(toState.getPos()).norm().mul(toState.getVisualRadius() + Style.MAXLINETHICK + 2));
+                    correctedPos.sub(toState.getPos()).norm().mul(toState.getVisualRadius() + Style.MAXLINETHICK + 2));
             anchor = getPos().mul(2).sub(start.div(2)).sub(end.div(2));
             anchor0 = null;
         }
 
-        final Style arrowStyle = Style.SHAPE_PIN;
-        // arrow line
-        if (anchor0 != null)
-            gr.drawPolygon(new Polygon(false).add(start).add(anchor0, anchor, end), arrowStyle);
-        else
-            gr.drawPolygon(new Polygon(false).add(start).add(anchor, end), arrowStyle);
-
-        // arrowhead
-        VectorFloat dir = anchor.sub(end).norm().mul(20);
-        VectorFloat lot = dir.getOrthogonal().mul(0.3f);
-        gr.drawPolygon(new Polygon(false)
-                .add(end.add(dir).add(lot))
-                .add(end.sub(dir.mul(0.1f)))
-                .add(end.add(dir).sub(lot)), arrowStyle);
+        drawArrow(gr, start, anchor0, anchor, end);
 
         // text
         ArrayList<String> strings = new ArrayList<>();
         if (condition != null && !condition.isEmpty())
-            strings.add(condition);
+            strings.add("$" + condition + "$");
         if (getValues() != null && !getValues().isEmpty())
-            strings.add(Lang.get("fsm_set_N", getValues()));
+            strings.add(Lang.get("fsm_set_N", "$" + getValues() + "$"));
 
         if (!strings.isEmpty()) {
             final int fontSize = Style.NORMAL.getFontSize();
@@ -186,10 +183,31 @@ public class Transition extends Movable<Transition> {
             }
 
             for (String s : strings) {
-                gr.drawText(textPos, s, Orientation.CENTERCENTER, Style.INOUT);
+                gr.drawText(textPos, s, Orientation.CENTERCENTER, Style.NORMAL);
                 textPos = textPos.add(0, fontSize);
             }
         }
+    }
+
+    static void drawArrow(Graphic gr, VectorInterface start, VectorInterface anchor0, VectorInterface anchor, VectorInterface end) {
+        final Style arrowStyle = Style.SHAPE_PIN;
+
+        if (anchor == null)
+            anchor = start.add(end).div(2);
+
+        // arrow line
+        if (anchor0 != null)
+            gr.drawPolygon(new Polygon(false).add(start).add(anchor0, anchor, end), arrowStyle);
+        else
+            gr.drawPolygon(new Polygon(false).add(start).add(anchor, end), arrowStyle);
+
+        // arrowhead
+        VectorFloat dir = anchor.sub(end).norm().mul(20);
+        VectorFloat lot = dir.getOrthogonal().mul(0.3f);
+        gr.drawPolygon(new Polygon(false)
+                .add(end.add(dir).add(lot))
+                .add(end.sub(dir.mul(0.1f)))
+                .add(end.add(dir).sub(lot)), arrowStyle);
     }
 
     /**

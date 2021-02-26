@@ -20,6 +20,8 @@ import de.neemann.digital.draw.library.ElementLibrary;
 import de.neemann.digital.draw.model.InverterConfig;
 import de.neemann.digital.draw.shapes.CustomCircuitShapeType;
 import de.neemann.digital.draw.shapes.custom.CustomShapeDescription;
+import de.neemann.digital.gui.components.data.ScopeTrigger;
+import de.neemann.digital.testing.TestCaseDescription;
 import de.neemann.gui.Screen;
 import de.neemann.gui.language.Language;
 
@@ -173,7 +175,7 @@ public final class Keys {
      * The value of constants
      */
     public static final Key<Long> VALUE
-            = new Key<>("Value", 1L).allowGroupEdit();
+            = new Key<>("Value", 1L).setAdaptiveIntFormat().allowGroupEdit();
 
     /**
      * The default value of elements
@@ -185,7 +187,7 @@ public final class Keys {
      * The default value of inputs
      */
     public static final Key<InValue> INPUT_DEFAULT
-            = new Key<>("InDefault", new InValue(0)).allowGroupEdit().setSecondary();
+            = new Key<>("InDefault", new InValue(0)).setAdaptiveIntFormat().allowGroupEdit().setSecondary();
 
     /**
      * The default value of the dip switch
@@ -275,6 +277,12 @@ public final class Keys {
             = new Key<>("Signed", false).allowGroupEdit();
 
     /**
+     * Selects if the reminder of the division is always positive
+     */
+    public static final Key<Boolean> REMAINDER_POSITIVE
+            = new Key<>("remainderPositive", true).setDependsOn(SIGNED);
+
+    /**
      * the data key for memory
      */
     public static final Key<DataField> DATA
@@ -304,6 +312,13 @@ public final class Keys {
      */
     public static final Key<CustomCircuitShapeType> SHAPE_TYPE
             = new Key.KeyEnum<>("shapeType", CustomCircuitShapeType.DEFAULT, CustomCircuitShapeType.values()).setSecondary();
+
+    /**
+     * Defines the distance to the previous pin. Used by the layout shape type
+     */
+    public static final Key.KeyInteger LAYOUT_SHAPE_DELTA
+            = new Key.KeyInteger("layoutShapeDelta", 0)
+            .setMin(0);
 
     /**
      * the width of an element if it is included as nested element
@@ -434,7 +449,7 @@ public final class Keys {
      * shape setting
      */
     public static final Key<Boolean> SETTINGS_IEEE_SHAPES
-            = new Key<>("IEEEShapes", Locale.getDefault().getLanguage().equals(Locale.US.getLanguage())).setRequiresRestart();
+            = new Key<>("IEEEShapes", !Locale.getDefault().getLanguage().equals(Locale.GERMAN.getLanguage())).setRequiresRestart();
 
     /**
      * The GUI Language
@@ -452,14 +467,14 @@ public final class Keys {
     /**
      * The GUI expression string representation
      */
-    public static final Key<FormatToExpression> SETTINGS_EXPRESSION_FORMAT
-            = new Key<>("ExpressionFormat", FormatToExpression.FORMATTER_UNICODE);
+    public static final Key.KeyEnum<FormatToExpression> SETTINGS_EXPRESSION_FORMAT
+            = new Key.KeyEnum<>("ExpressionFormat", FormatToExpression.UNICODE, FormatToExpression.values(), true);
 
     /**
      * enables the grid
      */
     public static final Key<Boolean> SETTINGS_GRID
-            = new Key<>("grid", true);
+            = new Key<>("grid", true).setRequiresRepaint();
 
     /**
      * enables the wire bits view
@@ -471,19 +486,30 @@ public final class Keys {
      * enables the MAC mouse mode
      */
     public static final Key<Boolean> SETTINGS_MAC_MOUSE
-            = new Key<>("macMouse", Screen.isMac()).setRequiresRestart();
+            = new Key<>("macMouse", Screen.isMac()).setRequiresRestart().setSecondary();
 
     /**
      * enables tunnel rename dialog
      */
     public static final Key<Boolean> SETTINGS_SHOW_TUNNEL_RENAME_DIALOG
-            = new Key<>("tunnelRenameDialog", true);
+            = new Key<>("tunnelRenameDialog", true).setSecondary();
 
     /**
      * output format for numbers
      */
     public static final Key<IntFormat> INT_FORMAT
             = new Key.KeyEnum<>("intFormat", IntFormat.def, IntFormat.values()).setSecondary();
+
+    /**
+     * fixed point fractional binary digits
+     */
+    public static final Key<Integer> FIXED_POINT
+            = new Key.KeyInteger("fixedPoint", 4)
+            .setMin(1)
+            .setMax(64)
+            .setDependsOn(INT_FORMAT, intFormat -> intFormat.equals(IntFormat.fixed) || intFormat.equals(IntFormat.fixedSigned))
+            .allowGroupEdit()
+            .setSecondary();
 
     /**
      * width of the terminal
@@ -709,6 +735,18 @@ public final class Keys {
             = new Key.KeyFile("ghdlPath", new File("ghdl")).setSecondary();
 
     /**
+     * The ghdl options
+     */
+    public static final Key<String> GHDL_OPTIONS
+            = new Key.LongString("ghdlOptions", "--std=08 --ieee=synopsys").setRows(3).setColumns(30).setPanelId("Options");
+
+    /**
+     * The iverilog options
+     */
+    public static final Key<String> IVERILOG_OPTIONS
+            = new Key.LongString("iverilogOptions", "").setRows(3).setColumns(30).setPanelId("Options");
+
+    /**
      * Path to iverilog installation directory
      */
     public static final Key<File> SETTINGS_IVERILOG_PATH
@@ -810,7 +848,13 @@ public final class Keys {
      * Used to input statements to generify a circuit.
      */
     public static final Key<String> GENERIC =
-            new Key.LongString("generic").allowGroupEdit();
+            new Key.LongString("generic").setLineNumbers(true).allowGroupEdit();
+
+    /**
+     * Used to input statements to generify a circuit.
+     */
+    public static final Key<String> GENERICLARGE =
+            new Key.LongString("generic").setLineNumbers(true).setRows(20).allowGroupEdit();
 
     /**
      * Circuit is generic
@@ -849,5 +893,18 @@ public final class Keys {
      */
     public static final Key<Boolean> MIRROR =
             new Key<>("mirror", false).allowGroupEdit().setSecondary();
+
+    /**
+     * The test data
+     */
+    public static final Key<TestCaseDescription> TESTDATA =
+            new Key<>("Testdata", TestCaseDescription::new);
+
+    /**
+     * The scope trigger mode
+     */
+    public static final Key.KeyEnum<ScopeTrigger.Trigger> TRIGGER =
+            new Key.KeyEnum<>("trigger", ScopeTrigger.Trigger.both, ScopeTrigger.Trigger.values());
+
 
 }

@@ -178,30 +178,38 @@ public class VHDLCreator {
 
         for (HDLPort i : circuit.getInputs()) {
             sep.check();
-            out.print(i.getName()).print(": in ").print(getType(i.getBits()));
+            out.print(i.getName()).print(": ").print(getDir(i.getDirection(), "in")).print(" ").print(getType(i.getBits()));
             if (i.hasDescription()) sep.setLineFinalizer(ou -> ou.printComment(" -- ", i.getDescription()));
         }
         for (HDLPort o : circuit.getOutputs()) {
             sep.check();
-            out.print(o.getName()).print(": out ").print(getType(o.getBits()));
+            out.print(o.getName()).print(": ").print(getDir(o.getDirection(), "out")).print(" ").print(getType(o.getBits()));
             if (o.hasDescription()) sep.setLineFinalizer(ou -> ou.printComment(" -- ", o.getDescription()));
         }
         sep.close();
         out.println(");").dec();
     }
 
+    private static String getDir(HDLPort.Direction direction, String def) {
+        if (direction == HDLPort.Direction.INOUT)
+            return "inout";
+        return def;
+    }
+
     private void printManyToOne(HDLNodeSplitterManyToOne node) throws IOException, HDLException {
         String target = node.getTargetSignal();
 
-        for (HDLNodeSplitterManyToOne.SplitterAssignment in : node) {
-            out.print(target).print("(");
-            if (in.getLsb() == in.getMsb())
-                out.print(in.getLsb());
-            else
-                out.print(in.getMsb()).print(" downto ").print(in.getLsb());
-            out.print(") <= ");
-            printExpression(in.getExpression());
-            out.println(";");
+        if (target != null) {
+            for (HDLNodeSplitterManyToOne.SplitterAssignment in : node) {
+                out.print(target).print("(");
+                if (in.getLsb() == in.getMsb())
+                    out.print(in.getLsb());
+                else
+                    out.print(in.getMsb()).print(" downto ").print(in.getLsb());
+                out.print(") <= ");
+                printExpression(in.getExpression());
+                out.println(";");
+            }
         }
     }
 
@@ -250,6 +258,11 @@ public class VHDLCreator {
                 sep.check();
                 out.print(o.getName()).print(" => ").print(o.getNet().getName());
             }
+        for (HDLPort o : node.getInOutputs())
+            if (o.getNet() != null) {
+                sep.check();
+                out.print(o.getName()).print(" => ").print(o.getNet().getName());
+            }
         out.println(");").dec().dec();
     }
 
@@ -277,7 +290,13 @@ public class VHDLCreator {
             out.print(value(constant));
         } else if (expression instanceof ExprNot) {
             out.print("NOT ");
-            printExpression(((ExprNot) expression).getExpression());
+            Expression inner = ((ExprNot) expression).getExpression();
+            if (inner instanceof ExprNot) { // Quartus does not like a NOT NOT
+                out.print("(");
+                printExpression(inner);
+                out.print(")");
+            } else
+                printExpression(inner);
         } else if (expression instanceof ExprOperate) {
             out.print("(");
             boolean first = true;

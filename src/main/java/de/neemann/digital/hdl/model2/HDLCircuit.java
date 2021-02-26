@@ -14,13 +14,12 @@ import de.neemann.digital.core.io.In;
 import de.neemann.digital.core.io.Out;
 import de.neemann.digital.core.io.PowerSupply;
 import de.neemann.digital.core.io.Probe;
-import de.neemann.digital.core.pld.PullDown;
-import de.neemann.digital.core.pld.PullUp;
 import de.neemann.digital.core.wiring.Break;
 import de.neemann.digital.core.wiring.Clock;
 import de.neemann.digital.core.wiring.Splitter;
 import de.neemann.digital.draw.elements.*;
-import de.neemann.digital.draw.model.InverterConfig;
+import de.neemann.digital.draw.library.GenericCode;
+import de.neemann.digital.draw.library.GenericInitCode;
 import de.neemann.digital.draw.model.Net;
 import de.neemann.digital.draw.model.NetList;
 import de.neemann.digital.gui.components.data.DummyElement;
@@ -44,14 +43,15 @@ import java.util.*;
  */
 public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Printable {
     private final String elementName;
+    private final int depth;
     private final ArrayList<HDLPort> outputs;
     private final ArrayList<HDLPort> inputs;
     private final ArrayList<HDLNet> listOfNets;
     private final String description;
     private final File origin;
+    private final ArrayList<HDLNode> nodes;
     private ArrayList<HDLPort> ports;
     private NetList netList;
-    private ArrayList<HDLNode> nodes;
     private HashMap<Net, HDLNet> nets;
     private String hdlEntityName;
 
@@ -61,12 +61,13 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
      * @param circuit     the circuit
      * @param elementName the name of the circuit
      * @param c           the context to create the circuits
+     * @param depth       the depth of this circuit in the circuits hierarchy
      * @throws PinException  PinException
      * @throws HDLException  HDLException
      * @throws NodeException NodeException
      */
-    HDLCircuit(Circuit circuit, String elementName, HDLModel c) throws PinException, HDLException, NodeException {
-        this(circuit, elementName, c, null);
+    HDLCircuit(Circuit circuit, String elementName, HDLModel c, int depth) throws PinException, HDLException, NodeException {
+        this(circuit, elementName, c, depth, null);
     }
 
     /**
@@ -75,13 +76,15 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
      * @param circuit         the circuit
      * @param elementName     the name of the circuit
      * @param c               the context to create the circuits
+     * @param depth           the depth of this circuit in the circuits hierarchy
      * @param clockIntegrator the clock integrator
      * @throws PinException  PinException
      * @throws HDLException  HDLException
      * @throws NodeException NodeException
      */
-    public HDLCircuit(Circuit circuit, String elementName, HDLModel c, HDLClockIntegrator clockIntegrator) throws PinException, HDLException, NodeException {
+    public HDLCircuit(Circuit circuit, String elementName, HDLModel c, int depth, HDLClockIntegrator clockIntegrator) throws PinException, HDLException, NodeException {
         this.elementName = elementName;
+        this.depth = depth;
 
         if (elementName.toLowerCase().endsWith(".dig"))
             hdlEntityName = elementName.substring(0, elementName.length() - 4);
@@ -141,25 +144,22 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
         for (HDLNet n : listOfNets)
             n.fixBits();
 
-        // fix inverted inputs
-        ArrayList<HDLNode> newNodes = new ArrayList<>();
-        for (HDLNode n : nodes) {
-            InverterConfig iv = n.getElementAttributes().get(Keys.INVERTER_CONFIG);
-            if (!iv.isEmpty()) {
-                for (HDLPort p : n.getInputs())
-                    if (iv.contains(p.getName()))
-                        newNodes.add(createNot(p, n));
-            }
-        }
-        nodes.addAll(newNodes);
+        for (HDLNet n : listOfNets)
+            n.checkPinControlUsage();
 
         for (HDLPort i : inputs)
-            if (i.getNet() != null)
+            if (i.getNet() != null) {
                 i.getNet().setIsInput(i.getName());
+                if (i.getNet().isInOutNet())
+                    i.setInOut();
+            }
 
-        for (HDLPort o : outputs)
+        for (HDLPort o : outputs) {
             if (o.getNet().needsVariable())
                 o.getNet().setIsOutput(o.getName(), o.getNet().getInputs().size() == 1);
+            if (o.getNet().isInOutNet())
+                o.setInOut();
+        }
 
     }
 
@@ -194,23 +194,28 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
         nodes.add(oneToMany);
     }
 
-    private HDLNode createNot(HDLPort p, HDLNode node) throws HDLException, NodeException, PinException {
-        final ElementAttributes attr = new ElementAttributes().setBits(p.getBits());
-        HDLNodeAssignment n = new HDLNodeAssignment(Not.DESCRIPTION.getName(), attr, name -> p.getBits());
+    HDLNet createNot(HDLNet inNet) throws HDLException, NodeException, PinException {
+        int bits = 1;
+        final ElementAttributes attr = new ElementAttributes().setBits(bits);
+        HDLNodeAssignment n = new HDLNodeAssignment(Not.DESCRIPTION.getName(), attr, name -> bits);
         HDLNet outNet = new HDLNet(null);
         listOfNets.add(outNet);
-        HDLNet inNet = p.getNet();
-        inNet.remove(p);
 
-        n.addPort(new HDLPort(Not.DESCRIPTION.getInputDescription(attr).get(0).getName(), inNet, HDLPort.Direction.IN, p.getBits()));
-        n.addPort(new HDLPort(Not.DESCRIPTION.getOutputDescriptions(attr).get(0).getName(), outNet, HDLPort.Direction.OUT, p.getBits()));
+        HDLPort notOut = new HDLPort(Not.DESCRIPTION.getOutputDescriptions(attr).get(0).getName(), outNet, HDLPort.Direction.OUT, 0);
+        n.addPort(notOut);
+        n.addPort(new HDLPort(Not.DESCRIPTION.getInputDescription(attr).get(0).getName(), inNet, HDLPort.Direction.IN, 0) {
+            @Override
+            public void setBits(int bits) {
+                super.setBits(bits);
+                notOut.setBits(bits);
+            }
+        });
 
-        p.setNet(outNet);
-        node.replaceNet(inNet, outNet);
+        n.setExpression(new ExprNot(new ExprVar(inNet)));
 
-        n.setExpression(new ExprNot(new ExprVar(n.getInputs().get(0).getNet())));
+        nodes.add(n);
 
-        return n;
+        return outNet;
     }
 
     private void addOutput(HDLPort port) {
@@ -226,15 +231,15 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
     private boolean isRealElement(VisualElement v) {
         return !v.equalsDescription(Tunnel.DESCRIPTION)
                 && !v.equalsDescription(Break.DESCRIPTION)
-                && !v.equalsDescription(PullDown.DESCRIPTION)
-                && !v.equalsDescription(PullUp.DESCRIPTION)
                 && !v.equalsDescription(Probe.DESCRIPTION)
                 && !v.equalsDescription(VGA.DESCRIPTION)
                 && !v.equalsDescription(PowerSupply.DESCRIPTION)
                 && !v.equalsDescription(DummyElement.TEXTDESCRIPTION)
                 && !v.equalsDescription(DummyElement.DATADESCRIPTION)
                 && !v.equalsDescription(DummyElement.RECTDESCRIPTION)
-                && !v.equalsDescription(TestCaseElement.TESTCASEDESCRIPTION);
+                && !v.equalsDescription(TestCaseElement.DESCRIPTION)
+                && !v.equalsDescription(GenericInitCode.DESCRIPTION)
+                && !v.equalsDescription(GenericCode.DESCRIPTION);
     }
 
     HDLNet getNetOfPin(Pin pin) {
@@ -532,6 +537,7 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
     public HDLCircuit applyDefaultOptimizations() throws HDLException {
         apply(new ReplaceOneToMany());
         apply(new MergeAssignments());
+        apply(new OptimizeExpressions(new ExprNot.OptimizeNotNot()));
         apply(new InlineManyToOne());
         apply(new RemoveConstantSignals());
         apply(new MergeConstants());  // under certain circumstances there are still constants
@@ -556,6 +562,13 @@ public class HDLCircuit implements Iterable<HDLNode>, HDLModel.BitProvider, Prin
      */
     public File getOrigin() {
         return origin;
+    }
+
+    /**
+     * @return the depth of this circuit in the circuits hierarchy
+     */
+    public int getDepth() {
+        return depth;
     }
 
     /**
